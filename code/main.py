@@ -24,7 +24,7 @@ from common import (
 
 
 def print_comparison(greedy_result, genetic_result):
-    """打印两个算法的对比结果"""
+    """打印贪心 vs 遗传的指标对比表格及改进幅度"""
     print("\n" + "=" * 70)
     print("算法对比结果")
     print("=" * 70)
@@ -34,6 +34,7 @@ def print_comparison(greedy_result, genetic_result):
     print(f"{'总架次/趟次':<20} {greedy_result['total_trips']:>20d} {genetic_result['total_trips']:>20d}")
     print(f"{'总配送次数':<20} {greedy_result['total_deliveries']:>20d} {genetic_result['total_deliveries']:>20d}")
 
+    # 计算遗传算法相对于贪心算法的改进
     improvement = (greedy_result['total_distance'] - genetic_result['total_distance'])
     improvement_pct = improvement / greedy_result['total_distance'] * 100
     print("-" * 70)
@@ -42,7 +43,7 @@ def print_comparison(greedy_result, genetic_result):
 
 
 def plot_comparison(greedy_result, genetic_result, save_to_file=False, output_dir=None):
-    """绘制算法对比图：并排展示贪心 vs 遗传的路径"""
+    """绘制算法对比图：左右并排展示贪心路径 vs 遗传路径，使用相同数据"""
     from matplotlib.patches import FancyArrowPatch
 
     clients = greedy_result['clients']
@@ -52,15 +53,18 @@ def plot_comparison(greedy_result, genetic_result, save_to_file=False, output_di
     colors = ['#2E86AB', '#A23B72', '#F18F01', '#32CD32', '#9932CC',
               '#FFD700', '#FF6347', '#4169E1']
 
+    # 左侧画贪心算法，右侧画遗传算法
     for alg_name, result, ax in [("贪心算法", greedy_result, axes[0]),
                                   ("遗传算法", genetic_result, axes[1])]:
         routes = result['routes']
         ax.scatter(depot[0], depot[1], c='red', s=100, marker='s', label='配送中心', zorder=5)
 
+        # 所有客户（灰色）及其标注
         for i, (x, y, w) in enumerate(clients):
             ax.scatter(x, y, s=60, c='gray', alpha=0.5, zorder=3)
             ax.text(x + 1.2, y + 1.2, f'{i}({int(w)}kg)', fontsize=7, alpha=0.7)
 
+        # 逐趟绘制路径箭头
         for idx, route in enumerate(routes):
             color = colors[idx % len(colors)]
             path = [depot] + [clients[i, :2] for i in route['route']] + [depot]
@@ -71,7 +75,7 @@ def plot_comparison(greedy_result, genetic_result, save_to_file=False, output_di
                     path[k], path[k + 1], arrowstyle='-|>', mutation_scale=12,
                     color=color, linewidth=1.8, alpha=0.8, zorder=4))
 
-            # 客户着色
+            # 该趟路线上的客户点着对应颜色
             client_coords = clients[route['route'], :2]
             ax.scatter(client_coords[:, 0], client_coords[:, 1],
                        c=color, s=60, zorder=5)
@@ -127,7 +131,7 @@ def main():
 
     output_dir = os.path.abspath(args.output_dir)
 
-    # 非交互后端，避免 plt.show() 阻塞（需在导入算法模块前设置）
+    # 非交互后端：使用 Agg 避免 plt.show() 弹窗阻塞（需在导入 pyplot 前设置）
     if args.no_show:
         import matplotlib
         matplotlib.use('Agg')

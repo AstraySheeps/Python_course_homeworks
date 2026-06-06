@@ -27,38 +27,41 @@ def greedy_assignment(clients, dist_matrix, max_capacity, max_distance):
     当所有剩余客户都无法装入当前路线时才开启新路线。
     """
     n = len(clients)
-    unassigned = set(range(n))
+    unassigned = set(range(n))          # 未分配客户集合
     drone_routes = []
-    depot_idx = 0
-    max_iterations = n * 10  # 安全上限，防止死循环
+    depot_idx = 0                        # 配送中心在距离矩阵中的索引
+    max_iterations = n * 10              # 安全上限，防止死循环
 
     iterations = 0
     while unassigned and iterations < max_iterations:
         iterations += 1
+        # 开始一趟新飞行
         current_route = []
         current_load = 0
         current_distance = 0
-        current_pos = depot_idx
+        current_pos = depot_idx            # 从配送中心出发
 
         while unassigned:
-            # 计算所有未分配客户到当前位置的距离，按距离排序
+            # 计算所有未分配客户到"当前位置"的距离，并排序
             candidates = []
             for client_idx in unassigned:
                 dist = dist_matrix[current_pos, client_idx + 1]
                 candidates.append((dist, client_idx))
-            candidates.sort(key=lambda x: x[0])
+            candidates.sort(key=lambda x: x[0])  # 按距离从小到大
 
             found = False
             for min_dist, client_idx in candidates:
                 client_weight = clients[client_idx, 2]
                 new_load = current_load + client_weight
+                # 新总里程 = 已走 + 去该客户 + 从该客户回配送中心
                 new_dist = current_distance + min_dist + dist_matrix[client_idx + 1, depot_idx]
 
+                # 两个约束：载重上限 + 里程上限
                 if new_load <= max_capacity and new_dist <= max_distance:
                     current_route.append(client_idx)
                     current_load = new_load
-                    current_distance += min_dist
-                    current_pos = client_idx + 1
+                    current_distance += min_dist   # 只累加去程，回程在下面统一加
+                    current_pos = client_idx + 1    # +1 因为距离矩阵第0行是配送中心
                     unassigned.remove(client_idx)
                     found = True
                     break
@@ -67,6 +70,7 @@ def greedy_assignment(clients, dist_matrix, max_capacity, max_distance):
                 break  # 无人可装，结束当前路线
 
         if current_route:
+            # 加上从最后一个客户返回配送中心的距离
             current_distance += dist_matrix[current_pos, depot_idx]
             drone_routes.append({
                 'route': current_route,
@@ -75,7 +79,8 @@ def greedy_assignment(clients, dist_matrix, max_capacity, max_distance):
                 'deliveries': len(current_route)
             })
         else:
-            # 所有剩余客户单独都无法装入，强制各装一程并记录警告
+            # 死胡同：所有剩余客户单独都无法满足约束
+            # 强制逐客户分配（每人一趟往返），并记录警告
             remaining = list(unassigned)
             for client_idx in remaining:
                 client_weight = clients[client_idx, 2]
@@ -107,11 +112,13 @@ def plot_results(clients, depot, routes, save_to_file=False, filename=None, outp
 
     fig, ax = plt.subplots(figsize=(12, 10))
 
+    # 配送中心 —— 红色方块
     ax.scatter(depot[0], depot[1], c='red', s=120, marker='s', label='配送中心', zorder=5)
 
-    colors = ['#2E86AB', '#A23B72', '#F18F01']
+    colors = ['#2E86AB', '#A23B72', '#F18F01']  # 三架无人机的专属颜色
     num_drones = NUM_DRONES
 
+    # 将架次按"趟"分组（每 num_drones 架次算一次并发趟）
     trip_clients = {}
     for idx, route in enumerate(routes):
         trip_num = idx // num_drones + 1
@@ -132,13 +139,16 @@ def plot_results(clients, depot, routes, save_to_file=False, filename=None, outp
     for i, (x, y, w) in enumerate(clients):
         ax.text(x + 1.5, y + 1.5, f'{i}({int(w)}kg)', fontsize=9)
 
+    # 为每趟路线绘制从配送中心出发→服务客户→返回的箭头路径
     for idx, route in enumerate(routes):
         drone_id = idx % num_drones
         color = colors[drone_id]
 
+        # 完整路径：配送中心 → 各客户 → 配送中心
         path = [depot] + [clients[i, :2] for i in route['route']] + [depot]
         path = np.array(path)
 
+        # 逐段绘制箭头
         for i in range(len(path) - 1):
             start = path[i]
             end = path[i + 1]
@@ -148,6 +158,7 @@ def plot_results(clients, depot, routes, save_to_file=False, filename=None, outp
             )
             ax.add_patch(arrow)
 
+        # 在路径中心显示该趟次的关键信息
         mid_x = np.mean(path[:, 0])
         mid_y = np.mean(path[:, 1])
         ax.text(mid_x, mid_y - 2,
@@ -245,9 +256,10 @@ def print_results(clients, routes, save_to_file=False, filename=None, output_dir
 
 
 def run_greedy(clients=None, output_dir=None):
-    """运行贪心算法并返回结果"""
+    """运行贪心算法并返回结果（可由外部模块调用的统一入口）"""
     from datetime import datetime
 
+    # 若无外部数据，自动生成并清洗
     if clients is None:
         clients = generate_simulation_data()
         clients = clean_data(clients)
@@ -258,9 +270,11 @@ def run_greedy(clients=None, output_dir=None):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_filename = f"drone_delivery_{timestamp}"
 
+    # 输出文本结果和可视化到文件
     print_results(clients, routes, save_to_file=True, filename=result_filename, output_dir=output_dir)
     plot_results(clients, DEPOT_COORDS, routes, save_to_file=True, filename=result_filename, output_dir=output_dir)
 
+    # 聚合统计指标并返回
     total_distance = sum(r['distance'] for r in routes)
     return {
         'clients': clients,

@@ -28,8 +28,10 @@ def generate_simulation_data(num_clients=NUM_CLIENTS, coord_range=None,
         weight_range = WEIGHT_RANGE
 
     np.random.seed(seed)
+    # 在坐标范围内均匀生成 (x, y)，重量为范围内的随机整数
     coords = np.random.uniform(coord_range[0], coord_range[1], size=(num_clients, 2))
     weights = np.random.randint(weight_range[0], weight_range[1] + 1, size=(num_clients, 1))
+    # 横向拼接：每行 [x, y, weight]
     clients = np.hstack([coords, weights])
     print(f"生成了 {num_clients} 个原始客户点")
     return clients
@@ -43,13 +45,16 @@ def clean_data(clients, coord_range=None, weight_range=None):
         weight_range = WEIGHT_RANGE
 
     original_count = len(clients)
+    # 第一轮筛选：剔除坐标越界的点
     mask = (
         (clients[:, 0] >= coord_range[0]) & (clients[:, 0] <= coord_range[1])
         & (clients[:, 1] >= coord_range[0]) & (clients[:, 1] <= coord_range[1])
     )
     clients = clients[mask]
+    # 第二轮筛选：剔除重量越界的点
     mask = (clients[:, 2] >= weight_range[0]) & (clients[:, 2] <= weight_range[1])
     clients = clients[mask]
+    # 第三轮去重：基于 (x, y) 坐标去除重复点
     _, unique_indices = np.unique(clients[:, :2], axis=0, return_index=True)
     clients = clients[unique_indices]
     print(
@@ -65,8 +70,10 @@ def compute_distance_matrix(clients, depot=None):
         depot = DEPOT_COORDS
 
     n = len(clients)
+    # 第0行为配送中心，第1..n行为各客户点
     all_points = np.vstack([depot, clients[:, :2]])
     dist_matrix = np.zeros((n + 1, n + 1))
+    # 计算欧氏距离对称矩阵
     for i in range(n + 1):
         for j in range(n + 1):
             dist_matrix[i, j] = np.linalg.norm(all_points[i] - all_points[j])
