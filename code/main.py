@@ -2,11 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 无人机配送路径规划 - 统一入口
-支持贪心算法、遗传算法、以及两者对比
+支持贪心算法、遗传算法、模拟退火算法、以及对比
 用法:
     python main.py --algo greedy          # 仅贪心算法
     python main.py --algo genetic         # 仅遗传算法
-    python main.py --algo both            # 两者对比（默认）
+    python main.py --algo sa              # 仅模拟退火算法
+    python main.py --algo both            # 贪心 vs 遗传（默认）
+    python main.py --algo all             # 三种算法对比
     python main.py --algo both --no-show  # 不显示图形窗口
 """
 
@@ -44,6 +46,7 @@ def print_comparison(greedy_result, genetic_result):
 
 def plot_comparison(greedy_result, genetic_result, save_to_file=False, output_dir=None):
     """绘制算法对比图：左右并排展示贪心路径 vs 遗传路径，使用相同数据"""
+    import matplotlib.pyplot as plt
     from matplotlib.patches import FancyArrowPatch
 
     clients = greedy_result['clients']
@@ -108,6 +111,117 @@ def plot_comparison(greedy_result, genetic_result, save_to_file=False, output_di
     plt.show()
 
 
+def print_all_comparison(greedy_result, genetic_result, sa_result):
+    """打印贪心 vs 遗传 vs 模拟退火的指标对比表格"""
+    results = [
+        ("贪心算法", greedy_result),
+        ("遗传算法", genetic_result),
+        ("模拟退火", sa_result),
+    ]
+
+    print("\n" + "=" * 80)
+    print("三种算法对比结果")
+    print("=" * 80)
+    header = f"{'指标':<20}"
+    for name, _ in results:
+        header += f" {name:>18}"
+    print(header)
+    print("-" * 80)
+
+    print(f"{'总飞行距离':<20}", end="")
+    for _, r in results:
+        print(f" {r['total_distance']:>18.2f}", end="")
+    print()
+
+    print(f"{'总趟次':<20}", end="")
+    for _, r in results:
+        print(f" {r['total_trips']:>18d}", end="")
+    print()
+
+    print(f"{'总配送次数':<20}", end="")
+    for _, r in results:
+        print(f" {r['total_deliveries']:>18d}", end="")
+    print()
+
+    print("-" * 80)
+
+    baseline = greedy_result['total_distance']
+    for name, r in results:
+        imp = baseline - r['total_distance']
+        imp_pct = imp / baseline * 100
+        print(f"{name} 相比贪心基线，总距离减少: {imp:+.2f} 单位 ({imp_pct:+.1f}%)")
+    print("=" * 80)
+
+
+def plot_all_comparison(greedy_result, genetic_result, sa_result,
+                        save_to_file=False, output_dir=None):
+    """绘制三种算法对比图：三列并排展示"""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyArrowPatch
+
+    clients = greedy_result['clients']
+    depot = DEPOT_COORDS
+
+    fig, axes = plt.subplots(1, 3, figsize=(30, 10))
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#32CD32', '#9932CC',
+              '#FFD700', '#FF6347', '#4169E1']
+
+    configs = [
+        ("贪心算法", greedy_result, axes[0]),
+        ("遗传算法", genetic_result, axes[1]),
+        ("模拟退火", sa_result, axes[2]),
+    ]
+
+    for alg_name, result, ax in configs:
+        routes = result['routes']
+        ax.scatter(depot[0], depot[1], c='red', s=100, marker='s', label='配送中心', zorder=5)
+
+        for i, (x, y, w) in enumerate(clients):
+            ax.scatter(x, y, s=60, c='gray', alpha=0.5, zorder=3)
+            ax.text(x + 1.2, y + 1.2, f'{i}({int(w)}kg)', fontsize=7, alpha=0.7)
+
+        for idx, route in enumerate(routes):
+            color = colors[idx % len(colors)]
+            path = [depot] + [clients[i, :2] for i in route['route']] + [depot]
+            path = np.array(path)
+
+            for k in range(len(path) - 1):
+                ax.add_patch(FancyArrowPatch(
+                    path[k], path[k + 1], arrowstyle='-|>', mutation_scale=12,
+                    color=color, linewidth=1.8, alpha=0.8, zorder=4))
+
+            client_coords = clients[route['route'], :2]
+            ax.scatter(client_coords[:, 0], client_coords[:, 1],
+                       c=color, s=60, zorder=5)
+
+        total_dist = result['total_distance']
+        n_trips = result['total_trips']
+        ax.set_title(f"{alg_name}\n总距离: {total_dist:.1f}  |  总趟次: {n_trips}",
+                     fontsize=13, fontweight='bold')
+
+        ax.set_xlim(COORD_RANGE[0] - 5, COORD_RANGE[1] + 5)
+        ax.set_ylim(COORD_RANGE[0] - 5, COORD_RANGE[1] + 5)
+        ax.set_aspect('equal')
+        ax.grid(True, alpha=0.3)
+        ax.set_xlabel('X坐标', fontsize=10)
+        ax.set_ylabel('Y坐标', fontsize=10)
+
+    plt.suptitle('无人机配送路径规划 - 三种算法对比', fontsize=16, fontweight='bold', y=1.01)
+    plt.tight_layout()
+
+    if save_to_file:
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            filepath = os.path.join(output_dir,
+                f"comparison_all_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+        else:
+            filepath = f"comparison_all_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor='white')
+        print(f"三方对比图已保存: {filepath}")
+
+    plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='无人机配送路径规划',
@@ -119,7 +233,7 @@ def main():
     python main.py --algo both         # 两者对比
     python main.py --no-show           # 不显示图形窗口
         ''')
-    parser.add_argument('--algo', choices=['greedy', 'genetic', 'both'],
+    parser.add_argument('--algo', choices=['greedy', 'genetic', 'sa', 'both', 'all'],
                         default='both', help='算法选择 (默认: both)')
     parser.add_argument('--num-drones', type=int, default=10,
                         help='遗传算法无人机数量 (默认: 10)')
@@ -139,6 +253,7 @@ def main():
     import matplotlib.pyplot as plt
     from drone_delivery import run_greedy
     from drone_delivery_genetic import run_genetic
+    from drone_delivery_sa import run_sa
 
     print("=" * 60)
     print("无人机配送路径规划")
@@ -158,14 +273,15 @@ def main():
 
     greedy_result = None
     genetic_result = None
+    sa_result = None
 
-    if args.algo in ('greedy', 'both'):
+    if args.algo in ('greedy', 'both', 'all'):
         print("=" * 60)
         print(">>> 运行贪心算法")
         print("=" * 60)
         greedy_result = run_greedy(clients=clients, output_dir=output_dir)
 
-    if args.algo in ('genetic', 'both'):
+    if args.algo in ('genetic', 'both', 'all'):
         print("\n" + "=" * 60)
         print(">>> 运行遗传算法")
         print("=" * 60)
@@ -173,7 +289,19 @@ def main():
             num_drones=args.num_drones, clients=clients, output_dir=output_dir
         )
 
-    if args.algo == 'both' and greedy_result and genetic_result:
+    if args.algo in ('sa', 'all'):
+        print("\n" + "=" * 60)
+        print(">>> 运行模拟退火算法")
+        print("=" * 60)
+        sa_result = run_sa(
+            num_drones=args.num_drones, clients=clients, output_dir=output_dir
+        )
+
+    if args.algo in ('both', 'all') and greedy_result and genetic_result and sa_result:
+        print_all_comparison(greedy_result, genetic_result, sa_result)
+        plot_all_comparison(greedy_result, genetic_result, sa_result,
+                            save_to_file=True, output_dir=output_dir)
+    elif args.algo == 'both' and greedy_result and genetic_result:
         print_comparison(greedy_result, genetic_result)
         plot_comparison(greedy_result, genetic_result, save_to_file=True, output_dir=output_dir)
 

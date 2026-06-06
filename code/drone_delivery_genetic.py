@@ -46,7 +46,7 @@ class FleetScheduler:
     def __init__(self, num_drones: int, speed: float):
         self.num_drones = num_drones
         self.speed = speed
-        self.available_at = [0.0] * num_drones   # 每架无人机的最早就绪时刻
+        self.available_at = [0.0] * num_drones   # 每架无人机的最早就绪时刻，初始值均为0.0，表示所有无人机初始时刻均空闲可用。
 
     def assign(self, flight_distance: float):
         """
