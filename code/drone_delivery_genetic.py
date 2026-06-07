@@ -8,9 +8,7 @@
 import os
 import random
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, FancyArrowPatch
 from datetime import datetime
 
@@ -20,6 +18,8 @@ from common import (
     generate_simulation_data, clean_data, compute_distance_matrix,
     RANDOM_SEED, NUM_CLIENTS, COORD_RANGE, WEIGHT_RANGE,
     MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, DEPOT_COORDS,
+    BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE,
+    PENALTY_WEIGHT,
 )
 
 plt.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans"]
@@ -34,7 +34,6 @@ GA_CXPB = 0.8  # 交叉概率       (搜索范围: 0.7/0.8/0.9, 最优: 0.8)
 GA_MUTPB = 0.3  # 变异概率       (搜索范围: 0.1/0.2/0.3, 最优: 0.3，原0.2)
 GA_TOURNSIZE = 5  # 锦标赛选择规模 (搜索范围: 3/5/7,       最优: 5)
 GA_ELITE = 10  # 精英保留数量   (搜索范围: 5/10/20,     最优: 10)
-PENALTY_WEIGHT = 1e4  # 约束违反惩罚系数
 
 
 class FleetScheduler:
@@ -332,34 +331,19 @@ def print_results(clients, routes, num_drones, save_to_file=False,
 
 # ==================== 可视化 ====================
 
-# ==================== 暗色主题配色 ====================
-_BG = "#0d1117"         # 图表背景（GitHub 暗色风）
-_PANEL = "#161b22"       # 子图/面板背景
-_GRID = "#21262d"        # 网格线和边框
-_TEXT_PRI = "#e6edf3"    # 主文字颜色
-_TEXT_SEC = "#8b949e"    # 次要文字颜色
-_DEPOT_COL = "#ff6b6b"   # 配送中心标记色
-
-_PALETTE = [
-    "#58a6ff", "#3fb950", "#f78166", "#d2a8ff", "#ffa657",
-    "#79c0ff", "#56d364", "#ff7b72", "#bc8cff", "#ffb347",
-    "#63e6be", "#f8a5c2", "#a9dc76", "#fc9867", "#ab9df2", "#78dce8",
-]
-
-
 def _make_drone_colors(active_drones: list) -> dict:
     """为每架实际参与调度的无人机分配唯一颜色"""
-    return {did: _PALETTE[i % len(_PALETTE)] for i, did in enumerate(active_drones)}
+    return {did: PALETTE[i % len(PALETTE)] for i, did in enumerate(active_drones)}
 
 
 def _style_ax(ax, xlim=None, ylim=None, coord_range=None):
     """统一暗色主题样式：背景、网格、坐标轴颜色"""
     r = coord_range or COORD_RANGE
-    ax.set_facecolor(_PANEL)
-    ax.tick_params(colors=_TEXT_SEC, labelsize=7)
+    ax.set_facecolor(PANEL)
+    ax.tick_params(colors=TEXT_SEC, labelsize=7)
     for spine in ax.spines.values():
-        spine.set_edgecolor(_GRID)
-    ax.grid(True, color=_GRID, linewidth=0.5, linestyle="-", alpha=0.8)
+        spine.set_edgecolor(GRID)
+    ax.grid(True, color=GRID, linewidth=0.5, linestyle="-", alpha=0.8)
     xl = xlim if xlim else (r[0] - 5, r[1] + 5)
     yl = ylim if ylim else (r[0] - 5, r[1] + 5)
     ax.set_xlim(*xl)
@@ -369,14 +353,14 @@ def _style_ax(ax, xlim=None, ylim=None, coord_range=None):
 
 def _draw_depot(ax, depot, size=120):
     """绘制配送中心：先画大光晕再画五角星标记"""
-    ax.scatter(*depot, s=size * 3, color=_DEPOT_COL, alpha=0.15, zorder=7, edgecolors="none")
-    ax.scatter(*depot, s=size, color=_DEPOT_COL, marker="*", zorder=8,
-               edgecolors=_BG, linewidths=0.8)
+    ax.scatter(*depot, s=size * 3, color=DEPOT_COL, alpha=0.15, zorder=7, edgecolors="none")
+    ax.scatter(*depot, s=size, color=DEPOT_COL, marker="*", zorder=8,
+               edgecolors=BG, linewidths=0.8)
 
 
 def _draw_all_clients_dim(ax, clients):
     """绘制所有客户位置（半透明暗色，作为背景层）"""
-    ax.scatter(clients[:, 0], clients[:, 1], s=22, color=_TEXT_SEC, alpha=0.4,
+    ax.scatter(clients[:, 0], clients[:, 1], s=22, color=TEXT_SEC, alpha=0.4,
                zorder=2, edgecolors="none")
 
 
@@ -385,7 +369,7 @@ def _plot_overview(ax, clients, depot, routes, drone_colors, coord_range):
     _style_ax(ax, coord_range=coord_range)
     _draw_all_clients_dim(ax, clients)
     # 最大里程半径虚线圆
-    ax.add_patch(Circle(depot, MAX_DISTANCE / 2, color=_TEXT_SEC,
+    ax.add_patch(Circle(depot, MAX_DISTANCE / 2, color=TEXT_SEC,
                         linestyle=(0, (4, 4)), fill=False, alpha=0.25,
                         linewidth=0.8, zorder=1))
 
@@ -403,12 +387,12 @@ def _plot_overview(ax, clients, depot, routes, drone_colors, coord_range):
         for idx in route["route"]:
             x, y = clients[idx, :2]
             ax.scatter(x, y, s=38, color=color, zorder=5, alpha=0.65,
-                       edgecolors=_BG, linewidths=0.8)
+                       edgecolors=BG, linewidths=0.8)
 
     _draw_depot(ax, depot)
-    ax.set_title("总览", color=_TEXT_PRI, fontsize=9, fontweight="bold", pad=6)
-    ax.set_xlabel("X", color=_TEXT_SEC, fontsize=7)
-    ax.set_ylabel("Y", color=_TEXT_SEC, fontsize=7)
+    ax.set_title("总览", color=TEXT_PRI, fontsize=9, fontweight="bold", pad=6)
+    ax.set_xlabel("X", color=TEXT_SEC, fontsize=7)
+    ax.set_ylabel("Y", color=TEXT_SEC, fontsize=7)
 
 
 def _plot_single_drone(ax, clients, depot, drone_routes, color, drone_id, coord_range):
@@ -433,15 +417,15 @@ def _plot_single_drone(ax, clients, depot, drone_routes, color, drone_id, coord_
         # 标注客户编号
         for seq, idx in enumerate(route["route"]):
             x, y = clients[idx, :2]
-            ax.scatter(x, y, s=45, color=color, zorder=6, edgecolors=_BG, linewidths=1.0)
-            ax.text(x + 1.8, y + 1.8, f"{idx}", fontsize=6, color=_TEXT_PRI,
+            ax.scatter(x, y, s=45, color=color, zorder=6, edgecolors=BG, linewidths=1.0)
+            ax.text(x + 1.8, y + 1.8, f"{idx}", fontsize=6, color=TEXT_PRI,
                     zorder=7, fontweight="bold")
         # 路线中心标注载重和里程
         cx = path[1:-1, 0].mean()
         cy = path[1:-1, 1].mean()
         ax.text(cx, cy, f"趟{t_idx + 1}  {route['load']:.0f}kg/{route['distance']:.0f}",
                 fontsize=5.5, color=color, ha="center", va="center",
-                bbox=dict(boxstyle="round,pad=0.25", facecolor=_PANEL,
+                bbox=dict(boxstyle="round,pad=0.25", facecolor=PANEL,
                           edgecolor=color, alpha=0.85, linewidth=0.8), zorder=8)
 
     _draw_depot(ax, depot, size=80)
@@ -449,15 +433,15 @@ def _plot_single_drone(ax, clients, depot, drone_routes, color, drone_id, coord_
     n_trips = len(drone_routes)
     ax.set_title(f"飞机 {drone_id + 1}   {n_trips}趟  {total_dist:.0f}单位",
                  color=color, fontsize=8, fontweight="bold", pad=5)
-    ax.set_xlabel("X", color=_TEXT_SEC, fontsize=6)
-    ax.set_ylabel("Y", color=_TEXT_SEC, fontsize=6)
+    ax.set_xlabel("X", color=TEXT_SEC, fontsize=6)
+    ax.set_ylabel("Y", color=TEXT_SEC, fontsize=6)
 
 
 def _draw_stats_panel(ax, clients, routes, num_drones, drone_colors):
     """绘制右侧统计面板：汇总指标 + 各飞机里程水平柱状图"""
-    ax.set_facecolor(_PANEL)
+    ax.set_facecolor(PANEL)
     for sp in ax.spines.values():
-        sp.set_edgecolor(_GRID)
+        sp.set_edgecolor(GRID)
     ax.set_xticks([])
     ax.set_yticks([])
 
@@ -465,7 +449,7 @@ def _draw_stats_panel(ax, clients, routes, num_drones, drone_colors):
     total_trips = len(routes)
     active = sorted({r["drone_id"] for r in routes})
 
-    ax.text(0.5, 0.97, "任务统计", transform=ax.transAxes, color=_TEXT_PRI,
+    ax.text(0.5, 0.97, "任务统计", transform=ax.transAxes, color=TEXT_PRI,
             fontsize=9, fontweight="bold", ha="center", va="top")
 
     summaries = [
@@ -475,16 +459,16 @@ def _draw_stats_panel(ax, clients, routes, num_drones, drone_colors):
     ]
     y = 0.88
     for label, val in summaries:
-        ax.text(0.08, y, label, transform=ax.transAxes, color=_TEXT_SEC, fontsize=7.5, va="top")
-        ax.text(0.92, y, val, transform=ax.transAxes, color=_TEXT_PRI, fontsize=7.5,
+        ax.text(0.08, y, label, transform=ax.transAxes, color=TEXT_SEC, fontsize=7.5, va="top")
+        ax.text(0.92, y, val, transform=ax.transAxes, color=TEXT_PRI, fontsize=7.5,
                 va="top", ha="right", fontweight="bold")
         y -= 0.072
 
-    ax.plot([0.05, 0.95], [y + 0.03, y + 0.03], color=_GRID, linewidth=0.8,
+    ax.plot([0.05, 0.95], [y + 0.03, y + 0.03], color=GRID, linewidth=0.8,
             transform=ax.transAxes)
     y -= 0.03
 
-    ax.text(0.5, y, "各飞机里程", transform=ax.transAxes, color=_TEXT_SEC,
+    ax.text(0.5, y, "各飞机里程", transform=ax.transAxes, color=TEXT_SEC,
             fontsize=7, ha="center", va="top")
     y -= 0.065
 
@@ -507,12 +491,12 @@ def _draw_stats_panel(ax, clients, routes, num_drones, drone_colors):
                                  color=color, alpha=0.75, zorder=3)
         ax.add_patch(bar_rect)
         bg_rect = plt.Rectangle((0.08, y - 0.028), 0.55, 0.022, transform=ax.transAxes,
-                                color=_GRID, alpha=0.4, zorder=2)
+                                color=GRID, alpha=0.4, zorder=2)
         ax.add_patch(bg_rect)
         ax.text(0.08, y, f"#{did + 1}", transform=ax.transAxes, color=color,
                 fontsize=6.5, va="bottom", fontweight="bold")
         ax.text(0.92, y, f"{s['dist']:.0f}  {s['trips']}趟", transform=ax.transAxes,
-                color=_TEXT_SEC, fontsize=6, va="bottom", ha="right")
+                color=TEXT_SEC, fontsize=6, va="bottom", ha="right")
         y -= 0.065
 
 
@@ -531,10 +515,10 @@ def plot_results(clients, depot, routes, num_drones, save_to_file=False,
     depot_arr = np.array(depot)
 
     # Figure 1：总览图 + 统计侧边栏
-    fig1 = plt.figure(figsize=(16, 10), facecolor=_BG)
+    fig1 = plt.figure(figsize=(16, 10), facecolor=BG)
     fig1.text(0.5, 0.97,
               f"无人机配送路径规划  ·  遗传算法  ·  机队 {num_drones} 架  ·  总览",
-              ha="center", va="top", color=_TEXT_PRI, fontsize=14, fontweight="bold")
+              ha="center", va="top", color=TEXT_PRI, fontsize=14, fontweight="bold")
     gs1 = gridspec.GridSpec(1, 2, figure=fig1, width_ratios=[4, 1],
                             left=0.04, right=0.97, top=0.92, bottom=0.06, wspace=0.06)
     ax_overview = fig1.add_subplot(gs1[0, 0])
@@ -550,7 +534,7 @@ def plot_results(clients, depot, routes, num_drones, save_to_file=False,
             filepath = os.path.join(output_dir, f"{filename}_overview.png")
         else:
             filepath = f"{filename}_overview.png"
-        fig1.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=_BG)
+        fig1.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=BG)
         print(f"总览图已保存: {filepath}")
     plt.show()
 
@@ -558,10 +542,10 @@ def plot_results(clients, depot, routes, num_drones, save_to_file=False,
     COLS = 4
     n_drone_rows = max(1, int(np.ceil(n_active / COLS)))
 
-    fig2 = plt.figure(figsize=(COLS * 3.8, n_drone_rows * 3.8 + 0.8), facecolor=_BG)
+    fig2 = plt.figure(figsize=(COLS * 3.8, n_drone_rows * 3.8 + 0.8), facecolor=BG)
     fig2.text(0.5, 0.98,
               f"无人机配送路径规划  ·  各飞机详情  ·  机队 {num_drones} 架",
-              ha="center", va="top", color=_TEXT_PRI, fontsize=13, fontweight="bold")
+              ha="center", va="top", color=TEXT_PRI, fontsize=13, fontweight="bold")
     gs2 = gridspec.GridSpec(n_drone_rows, COLS, figure=fig2, hspace=0.38,
                             wspace=0.22, top=0.93, bottom=0.04, left=0.03, right=0.98)
     for plot_idx, did in enumerate(active_drones):
@@ -581,7 +565,7 @@ def plot_results(clients, depot, routes, num_drones, save_to_file=False,
             filepath = os.path.join(output_dir, f"{filename}_details.png")
         else:
             filepath = f"{filename}_details.png"
-        fig2.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=_BG)
+        fig2.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=BG)
         print(f"单机详情图已保存: {filepath}")
     plt.show()
 
@@ -592,12 +576,12 @@ def plot_evolution(logbook, save_to_file=False, filename=None, output_dir=None):
     mins = np.array(logbook.select("min"))
     avgs = np.array(logbook.select("avg"))
 
-    fig, ax = plt.subplots(figsize=(11, 4.5), facecolor=_BG)
-    ax.set_facecolor(_PANEL)
+    fig, ax = plt.subplots(figsize=(11, 4.5), facecolor=BG)
+    ax.set_facecolor(PANEL)
     for sp in ax.spines.values():
-        sp.set_edgecolor(_GRID)
-    ax.tick_params(colors=_TEXT_SEC, labelsize=8)
-    ax.grid(True, color=_GRID, linewidth=0.5, alpha=0.8)
+        sp.set_edgecolor(GRID)
+    ax.tick_params(colors=TEXT_SEC, labelsize=8)
+    ax.grid(True, color=GRID, linewidth=0.5, alpha=0.8)
 
     ax.fill_between(gens, avgs, mins, alpha=0.08, color="#58a6ff")
     ax.fill_between(gens, mins, mins.min(), alpha=0.12, color="#3fb950")
@@ -614,14 +598,14 @@ def plot_evolution(logbook, save_to_file=False, filename=None, output_dir=None):
         xy=(best_gen, best_val),
         xytext=(best_gen + len(gens) * 0.05,
                 best_val + (avgs.max() - mins.min()) * 0.08),
-        color=_TEXT_PRI, fontsize=8,
-        arrowprops=dict(arrowstyle="->", color=_TEXT_SEC, lw=1.0),
+        color=TEXT_PRI, fontsize=8,
+        arrowprops=dict(arrowstyle="->", color=TEXT_SEC, lw=1.0),
     )
 
-    ax.set_xlabel("迭代代数", color=_TEXT_SEC, fontsize=9)
-    ax.set_ylabel("适应度（总飞行距离）", color=_TEXT_SEC, fontsize=9)
-    ax.set_title("遗传算法进化曲线", color=_TEXT_PRI, fontsize=12, fontweight="bold")
-    legend = ax.legend(fontsize=9, facecolor=_PANEL, edgecolor=_GRID, labelcolor=_TEXT_PRI)
+    ax.set_xlabel("迭代代数", color=TEXT_SEC, fontsize=9)
+    ax.set_ylabel("适应度（总飞行距离）", color=TEXT_SEC, fontsize=9)
+    ax.set_title("遗传算法进化曲线", color=TEXT_PRI, fontsize=12, fontweight="bold")
+    legend = ax.legend(fontsize=9, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT_PRI)
     plt.tight_layout()
 
     if save_to_file:
@@ -632,7 +616,7 @@ def plot_evolution(logbook, save_to_file=False, filename=None, output_dir=None):
             filepath = os.path.join(output_dir, f"{filename}_evolution.png")
         else:
             filepath = f"{filename}_evolution.png"
-        plt.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=_BG)
+        plt.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=BG)
         print(f"进化曲线已保存: {filepath}")
 
     plt.show()

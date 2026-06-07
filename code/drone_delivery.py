@@ -8,12 +8,12 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
 
 from common import (
     generate_simulation_data, clean_data, compute_distance_matrix,
     RANDOM_SEED, NUM_CLIENTS, COORD_RANGE, WEIGHT_RANGE,
     NUM_DRONES, MAX_CAPACITY, MAX_DISTANCE, DEPOT_COORDS,
+    BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE,
 )
 
 plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
@@ -107,18 +107,24 @@ def greedy_assignment(clients, dist_matrix, max_capacity, max_distance):
 
 
 def plot_results(clients, depot, routes, save_to_file=False, filename=None, output_dir=None):
-    """可视化配送路径"""
-    from matplotlib.patches import FancyArrowPatch
+    """贪心算法路径可视化（暗色主题，与遗传/退火风格统一）。
 
-    fig, ax = plt.subplots(figsize=(12, 10))
+    将所有架次的路线叠加在同一张图上，不同趟次用不同颜色区分。
+    """
+    from matplotlib.patches import FancyArrowPatch, Circle
+    from matplotlib.lines import Line2D
+    from datetime import datetime
 
-    # 配送中心 —— 红色方块
-    ax.scatter(depot[0], depot[1], c='red', s=120, marker='s', label='配送中心', zorder=5)
+    fig, ax = plt.subplots(figsize=(14, 11), facecolor=BG)
+    ax.set_facecolor(PANEL)
+    ax.tick_params(colors=TEXT_SEC, labelsize=9)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(GRID)
+    ax.grid(True, color=GRID, linewidth=0.5, alpha=0.5)
 
-    colors = ['#2E86AB', '#A23B72', '#F18F01']  # 三架无人机的专属颜色
     num_drones = NUM_DRONES
 
-    # 将架次按"趟"分组（每 num_drones 架次算一次并发趟）
+    # 按趟分组（每 num_drones 架次 = 一趟并发）
     trip_clients = {}
     for idx, route in enumerate(routes):
         trip_num = idx // num_drones + 1
@@ -126,71 +132,78 @@ def plot_results(clients, depot, routes, save_to_file=False, filename=None, outp
             trip_clients[trip_num] = []
         trip_clients[trip_num].extend(route['route'])
 
-    trip_colors = ['#4169E1', '#FF6347', '#32CD32', '#9932CC', '#FFD700']
+    trip_colors = PALETTE[:max(1, len(trip_clients))]
 
+    # 绘制所有客户点（半透明暗色背景层）
+    ax.scatter(clients[:, 0], clients[:, 1], s=22, color=TEXT_SEC, alpha=0.4,
+               zorder=2, edgecolors='none')
+    # 标注客户编号和重量
+    for i, (x, y, w) in enumerate(clients):
+        ax.text(x + 1.5, y + 1.5, f'{i}({int(w)}kg)', fontsize=7, color=TEXT_SEC)
+
+    # 各趟次客户点着对应颜色
     for trip_num, client_indices in trip_clients.items():
         color = trip_colors[(trip_num - 1) % len(trip_colors)]
         unique_clients = list(set(client_indices))
         client_coords = clients[unique_clients, :2]
         ax.scatter(client_coords[:, 0], client_coords[:, 1],
-                   c=color, s=100, marker='o',
-                   label=f'客户点（第{trip_num}趟）', zorder=4)
+                   c=color, s=45, zorder=5, edgecolors=BG, linewidths=0.8)
 
-    for i, (x, y, w) in enumerate(clients):
-        ax.text(x + 1.5, y + 1.5, f'{i}({int(w)}kg)', fontsize=9)
-
-    # 为每趟路线绘制从配送中心出发→服务客户→返回的箭头路径
+    # 为每条路线绘制箭头路径
     for idx, route in enumerate(routes):
         drone_id = idx % num_drones
-        color = colors[drone_id]
+        trip_num = idx // num_drones + 1
+        color = trip_colors[(trip_num - 1) % len(trip_colors)]
 
-        # 完整路径：配送中心 → 各客户 → 配送中心
-        path = [depot] + [clients[i, :2] for i in route['route']] + [depot]
-        path = np.array(path)
+        path = np.array([depot] + [clients[i, :2] for i in route['route']] + [depot])
+        # 半透明连线
+        ax.plot(path[:, 0], path[:, 1], color=color, linewidth=2.0, alpha=0.18,
+                solid_capstyle='round', zorder=2)
+        # 方向箭头
+        for k in range(len(path) - 1):
+            ax.add_patch(FancyArrowPatch(
+                path[k], path[k + 1], arrowstyle='-|>', mutation_scale=10,
+                color=color, linewidth=1.3, alpha=0.65, zorder=3, capstyle='round'))
 
-        # 逐段绘制箭头
-        for i in range(len(path) - 1):
-            start = path[i]
-            end = path[i + 1]
-            arrow = FancyArrowPatch(
-                start, end, arrowstyle='-|>', mutation_scale=15,
-                color=color, linewidth=2, zorder=3
-            )
-            ax.add_patch(arrow)
-
-        # 在路径中心显示该趟次的关键信息
+        # 路径中心标注
         mid_x = np.mean(path[:, 0])
         mid_y = np.mean(path[:, 1])
-        ax.text(mid_x, mid_y - 2,
-                f'飞机{drone_id + 1}第{idx // num_drones + 1}趟\n'
-                f'载重:{route["load"]:.1f}kg\n里程:{route["distance"]:.1f}',
-                fontsize=8, color=color,
-                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8),
-                zorder=6)
+        ax.text(mid_x, mid_y - 2.5,
+                f'飞机{drone_id + 1}·趟{trip_num} | {route["load"]:.0f}kg/{route["distance"]:.0f}',
+                fontsize=6.5, color=color, ha='center', va='center',
+                bbox=dict(boxstyle='round,pad=0.25', facecolor=PANEL,
+                          edgecolor=color, alpha=0.85, linewidth=0.8), zorder=7)
 
-    circle = Circle(depot, MAX_DISTANCE / 2, color='gray', linestyle='--',
-                    fill=False, alpha=0.3, label=f'最大里程半径({MAX_DISTANCE/2})')
-    ax.add_patch(circle)
+    # 最大里程半径虚线圆
+    ax.add_patch(Circle(depot, MAX_DISTANCE / 2, color=TEXT_SEC,
+                        linestyle=(0, (4, 4)), fill=False, alpha=0.25,
+                        linewidth=0.8, zorder=1))
 
-    from matplotlib.lines import Line2D
+    # 配送中心 —— 光晕+五角星
+    ax.scatter(*depot, s=360, color=DEPOT_COL, alpha=0.15, zorder=7, edgecolors='none')
+    ax.scatter(*depot, s=120, color=DEPOT_COL, marker='*', zorder=8,
+               edgecolors=BG, linewidths=0.8)
+
+    # 图例
     legend_elements = [
-        Line2D([0], [0], color=colors[0], linewidth=2, label='飞机1'),
-        Line2D([0], [0], color=colors[1], linewidth=2, label='飞机2'),
-        Line2D([0], [0], color=colors[2], linewidth=2, label='飞机3'),
-        Line2D([0], [0], marker='s', color='w', markerfacecolor='red', markersize=10, label='配送中心'),
+        Line2D([0], [0], marker='*', color='w', markerfacecolor=DEPOT_COL,
+               markersize=12, label='配送中心'),
     ]
     for trip_num in sorted(trip_clients.keys()):
         color = trip_colors[(trip_num - 1) % len(trip_colors)]
         legend_elements.append(
             Line2D([0], [0], marker='o', color='w', markerfacecolor=color,
-                   markersize=10, label=f'客户点（第{trip_num}趟）')
+                   markersize=8, label=f'第{trip_num}趟')
         )
+    ax.legend(handles=legend_elements, fontsize=9, facecolor=PANEL,
+              edgecolor=GRID, labelcolor=TEXT_PRI, loc='upper right')
 
-    ax.legend(handles=legend_elements, fontsize=9, loc='upper right')
-    ax.set_title('无人机配送路径规划（贪心算法）', fontsize=16)
-    ax.set_xlabel('X坐标', fontsize=12)
-    ax.set_ylabel('Y坐标', fontsize=12)
-    ax.grid(True, alpha=0.3)
+    total_dist = sum(r['distance'] for r in routes)
+    ax.set_title(f'无人机配送路径规划（贪心算法）\n'
+                 f'总距离: {total_dist:.1f}  |  总趟次: {len(routes)}  |  总架次: {len(routes)}',
+                 color=TEXT_PRI, fontsize=13, fontweight='bold', pad=8)
+    ax.set_xlabel('X坐标', color=TEXT_SEC, fontsize=10)
+    ax.set_ylabel('Y坐标', color=TEXT_SEC, fontsize=10)
     ax.set_xlim(COORD_RANGE[0] - 5, COORD_RANGE[1] + 5)
     ax.set_ylim(COORD_RANGE[0] - 5, COORD_RANGE[1] + 5)
     ax.set_aspect('equal')
@@ -198,14 +211,13 @@ def plot_results(clients, depot, routes, save_to_file=False, filename=None, outp
 
     if save_to_file:
         if filename is None:
-            from datetime import datetime
             filename = f"drone_delivery_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
             filepath = os.path.join(output_dir, f"{filename}.png")
         else:
             filepath = f"{filename}.png"
-        plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor=BG)
         print(f"可视化图片已保存: {filepath}")
 
     plt.show()

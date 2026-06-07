@@ -8,12 +8,9 @@
 import os
 import random
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, FancyArrowPatch
 from datetime import datetime
-from copy import deepcopy
 
 from drone_delivery_genetic import FleetScheduler, decode_individual
 
@@ -21,6 +18,8 @@ from common import (
     generate_simulation_data, clean_data, compute_distance_matrix,
     RANDOM_SEED, NUM_CLIENTS, COORD_RANGE, WEIGHT_RANGE,
     MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, DEPOT_COORDS,
+    BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE,
+    PENALTY_WEIGHT,
 )
 
 plt.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans"]
@@ -32,21 +31,7 @@ SA_T_MIN = 0.01         # 终止温度 —— 低温收敛到局部最优
 SA_ALPHA = 0.98         # 降温速率 —— 越接近1降温越慢、搜索越充分
 SA_ITER_PER_T = 50      # 每个温度下的迭代次数
 SA_MAX_RESTARTS = 3     # 重启动次数 —— 多次独立搜索取最优
-PENALTY_WEIGHT = 1e4    # 约束违反惩罚系数（与遗传算法一致）
-
-# ==================== 暗色主题配色 ====================
-_BG = "#0d1117"
-_PANEL = "#161b22"
-_GRID = "#21262d"
-_TEXT_PRI = "#e6edf3"
-_TEXT_SEC = "#8b949e"
-_DEPOT_COL = "#ff6b6b"
-
-_PALETTE = [
-    "#58a6ff", "#3fb950", "#f78166", "#d2a8ff", "#ffa657",
-    "#79c0ff", "#56d364", "#ff7b72", "#bc8cff", "#ffb347",
-    "#63e6be", "#f8a5c2", "#a9dc76", "#fc9867", "#ab9df2", "#78dce8",
-]
+SA_RESTART_COLORS = ["#58a6ff", "#3fb950", "#f78166"]  # 重启轨迹颜色
 
 
 def evaluate_solution(individual, clients, dist_matrix, num_drones):
@@ -237,29 +222,29 @@ def print_results(clients, routes, num_drones, save_to_file=False,
 # ==================== 可视化 ====================
 
 def _make_drone_colors(active_drones):
-    return {did: _PALETTE[i % len(_PALETTE)] for i, did in enumerate(active_drones)}
+    return {did: PALETTE[i % len(PALETTE)] for i, did in enumerate(active_drones)}
 
 
 def _style_ax(ax, coord_range=None):
     r = coord_range or COORD_RANGE
-    ax.set_facecolor(_PANEL)
-    ax.tick_params(colors=_TEXT_SEC, labelsize=7)
+    ax.set_facecolor(PANEL)
+    ax.tick_params(colors=TEXT_SEC, labelsize=7)
     for spine in ax.spines.values():
-        spine.set_edgecolor(_GRID)
-    ax.grid(True, color=_GRID, linewidth=0.5, linestyle="-", alpha=0.8)
+        spine.set_edgecolor(GRID)
+    ax.grid(True, color=GRID, linewidth=0.5, linestyle="-", alpha=0.8)
     ax.set_xlim(r[0] - 5, r[1] + 5)
     ax.set_ylim(r[0] - 5, r[1] + 5)
     ax.set_aspect("equal")
 
 
 def _draw_depot(ax, depot, size=120):
-    ax.scatter(*depot, s=size * 3, color=_DEPOT_COL, alpha=0.15, zorder=7, edgecolors="none")
-    ax.scatter(*depot, s=size, color=_DEPOT_COL, marker="*", zorder=8,
-               edgecolors=_BG, linewidths=0.8)
+    ax.scatter(*depot, s=size * 3, color=DEPOT_COL, alpha=0.15, zorder=7, edgecolors="none")
+    ax.scatter(*depot, s=size, color=DEPOT_COL, marker="*", zorder=8,
+               edgecolors=BG, linewidths=0.8)
 
 
 def _draw_all_clients_dim(ax, clients):
-    ax.scatter(clients[:, 0], clients[:, 1], s=22, color=_TEXT_SEC, alpha=0.4,
+    ax.scatter(clients[:, 0], clients[:, 1], s=22, color=TEXT_SEC, alpha=0.4,
                zorder=2, edgecolors="none")
 
 
@@ -272,10 +257,10 @@ def plot_routes(clients, depot, routes, num_drones, save_to_file=False,
     drone_colors = _make_drone_colors(active_drones)
     depot_arr = np.array(depot)
 
-    fig = plt.figure(figsize=(16, 10), facecolor=_BG)
+    fig = plt.figure(figsize=(16, 10), facecolor=BG)
     fig.text(0.5, 0.97,
              f"无人机配送路径规划  ·  模拟退火算法  ·  机队 {num_drones} 架  ·  总览",
-             ha="center", va="top", color=_TEXT_PRI, fontsize=14, fontweight="bold")
+             ha="center", va="top", color=TEXT_PRI, fontsize=14, fontweight="bold")
     gs = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[4, 1],
                            left=0.04, right=0.97, top=0.92, bottom=0.06, wspace=0.06)
 
@@ -283,7 +268,7 @@ def plot_routes(clients, depot, routes, num_drones, save_to_file=False,
     ax_main = fig.add_subplot(gs[0, 0])
     _style_ax(ax_main)
     _draw_all_clients_dim(ax_main, clients)
-    ax_main.add_patch(Circle(depot, MAX_DISTANCE / 2, color=_TEXT_SEC,
+    ax_main.add_patch(Circle(depot, MAX_DISTANCE / 2, color=TEXT_SEC,
                              linestyle=(0, (4, 4)), fill=False, alpha=0.25,
                              linewidth=0.8, zorder=1))
 
@@ -299,18 +284,18 @@ def plot_routes(clients, depot, routes, num_drones, save_to_file=False,
         for idx in route["route"]:
             x, y = clients[idx, :2]
             ax_main.scatter(x, y, s=38, color=color, zorder=5, alpha=0.65,
-                            edgecolors=_BG, linewidths=0.8)
+                            edgecolors=BG, linewidths=0.8)
 
     _draw_depot(ax_main, depot)
-    ax_main.set_title("总览", color=_TEXT_PRI, fontsize=9, fontweight="bold", pad=6)
-    ax_main.set_xlabel("X", color=_TEXT_SEC, fontsize=7)
-    ax_main.set_ylabel("Y", color=_TEXT_SEC, fontsize=7)
+    ax_main.set_title("总览", color=TEXT_PRI, fontsize=9, fontweight="bold", pad=6)
+    ax_main.set_xlabel("X", color=TEXT_SEC, fontsize=7)
+    ax_main.set_ylabel("Y", color=TEXT_SEC, fontsize=7)
 
     # 右侧：统计面板
     ax_stats = fig.add_subplot(gs[0, 1])
-    ax_stats.set_facecolor(_PANEL)
+    ax_stats.set_facecolor(PANEL)
     for sp in ax_stats.spines.values():
-        sp.set_edgecolor(_GRID)
+        sp.set_edgecolor(GRID)
     ax_stats.set_xticks([])
     ax_stats.set_yticks([])
 
@@ -318,7 +303,7 @@ def plot_routes(clients, depot, routes, num_drones, save_to_file=False,
     total_trips = len(routes)
     active = sorted({r["drone_id"] for r in routes})
 
-    ax_stats.text(0.5, 0.97, "任务统计", transform=ax_stats.transAxes, color=_TEXT_PRI,
+    ax_stats.text(0.5, 0.97, "任务统计", transform=ax_stats.transAxes, color=TEXT_PRI,
                   fontsize=9, fontweight="bold", ha="center", va="top")
 
     summaries = [
@@ -328,15 +313,15 @@ def plot_routes(clients, depot, routes, num_drones, save_to_file=False,
     ]
     y = 0.88
     for label, val in summaries:
-        ax_stats.text(0.08, y, label, transform=ax_stats.transAxes, color=_TEXT_SEC, fontsize=7.5, va="top")
-        ax_stats.text(0.92, y, val, transform=ax_stats.transAxes, color=_TEXT_PRI, fontsize=7.5,
+        ax_stats.text(0.08, y, label, transform=ax_stats.transAxes, color=TEXT_SEC, fontsize=7.5, va="top")
+        ax_stats.text(0.92, y, val, transform=ax_stats.transAxes, color=TEXT_PRI, fontsize=7.5,
                       va="top", ha="right", fontweight="bold")
         y -= 0.072
 
-    ax_stats.plot([0.05, 0.95], [y + 0.03, y + 0.03], color=_GRID, linewidth=0.8,
+    ax_stats.plot([0.05, 0.95], [y + 0.03, y + 0.03], color=GRID, linewidth=0.8,
                   transform=ax_stats.transAxes)
     y -= 0.03
-    ax_stats.text(0.5, y, "各飞机里程", transform=ax_stats.transAxes, color=_TEXT_SEC,
+    ax_stats.text(0.5, y, "各飞机里程", transform=ax_stats.transAxes, color=TEXT_SEC,
                   fontsize=7, ha="center", va="top")
     y -= 0.065
 
@@ -357,11 +342,11 @@ def plot_routes(clients, depot, routes, num_drones, save_to_file=False,
         ax_stats.add_patch(plt.Rectangle((0.08, y - 0.028), bar_w, 0.022, transform=ax_stats.transAxes,
                                          color=color, alpha=0.75, zorder=3))
         ax_stats.add_patch(plt.Rectangle((0.08, y - 0.028), 0.55, 0.022, transform=ax_stats.transAxes,
-                                         color=_GRID, alpha=0.4, zorder=2))
+                                         color=GRID, alpha=0.4, zorder=2))
         ax_stats.text(0.08, y, f"#{did + 1}", transform=ax_stats.transAxes, color=color,
                       fontsize=6.5, va="bottom", fontweight="bold")
         ax_stats.text(0.92, y, f"{s['dist']:.0f}  {s['trips']}趟", transform=ax_stats.transAxes,
-                      color=_TEXT_SEC, fontsize=6, va="bottom", ha="right")
+                      color=TEXT_SEC, fontsize=6, va="bottom", ha="right")
         y -= 0.065
 
     if save_to_file:
@@ -372,7 +357,7 @@ def plot_routes(clients, depot, routes, num_drones, save_to_file=False,
             filepath = os.path.join(output_dir, f"{filename}_overview.png")
         else:
             filepath = f"{filename}_overview.png"
-        fig.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=_BG)
+        fig.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=BG)
         print(f"总览图已保存: {filepath}")
     plt.show()
 
@@ -384,47 +369,47 @@ def plot_annealing_curve(all_cost_history, save_to_file=False,
     并在双Y轴上叠加温度下降曲线。
     """
     fig, axes = plt.subplots(SA_MAX_RESTARTS, 1, figsize=(14, 3.2 * SA_MAX_RESTARTS),
-                             facecolor=_BG, squeeze=False)
+                             facecolor=BG, squeeze=False)
     axes = axes.flatten()
 
     restart_colors = ["#58a6ff", "#3fb950", "#f78166"]
 
     for idx, (cost_hist, temp_hist) in enumerate(all_cost_history):
         ax = axes[idx]
-        ax.set_facecolor(_PANEL)
+        ax.set_facecolor(PANEL)
         for sp in ax.spines.values():
-            sp.set_edgecolor(_GRID)
-        ax.tick_params(colors=_TEXT_SEC, labelsize=7.5)
-        ax.grid(True, color=_GRID, linewidth=0.5, alpha=0.6)
+            sp.set_edgecolor(GRID)
+        ax.tick_params(colors=TEXT_SEC, labelsize=7.5)
+        ax.grid(True, color=GRID, linewidth=0.5, alpha=0.6)
 
         color = restart_colors[idx]
         iterations = np.arange(len(cost_hist))
 
         ax2 = ax.twinx()
-        ax2.set_facecolor(_PANEL)
-        ax2.tick_params(colors=_TEXT_SEC, labelsize=7)
+        ax2.set_facecolor(PANEL)
+        ax2.tick_params(colors=TEXT_SEC, labelsize=7)
 
         # 温度曲线（对数坐标更直观）
         ax2.plot(iterations, temp_hist, color="#f78166", linewidth=0.8, alpha=0.5,
                  linestyle="--", label="温度")
-        ax2.set_ylabel("温度", color=_TEXT_SEC, fontsize=7.5)
+        ax2.set_ylabel("温度", color=TEXT_SEC, fontsize=7.5)
         ax2.set_yscale("log")
 
         # 最优成本曲线
         ax.plot(iterations, cost_hist, color=color, linewidth=1.2, alpha=0.9)
-        ax.set_ylabel("最优距离", color=_TEXT_SEC, fontsize=7.5)
-        ax.set_xlabel("迭代次数", color=_TEXT_SEC, fontsize=7.5)
+        ax.set_ylabel("最优距离", color=TEXT_SEC, fontsize=7.5)
+        ax.set_xlabel("迭代次数", color=TEXT_SEC, fontsize=7.5)
 
         final_cost = cost_hist[-1]
         ax.set_title(f"重启 {idx + 1}  |  最终最优距离: {final_cost:.2f}  |  "
                      f"初始温度: {SA_T0:.0f} → 终止: {SA_T_MIN:.3f}",
-                     color=_TEXT_PRI, fontsize=9, fontweight="bold")
+                     color=TEXT_PRI, fontsize=9, fontweight="bold")
 
         # 标注初始值和最终值
         ax.scatter([0], [cost_hist[0]], color=color, s=30, zorder=6, alpha=0.6)
         ax.scatter([len(cost_hist) - 1], [final_cost], color=color, s=50, zorder=6)
 
-    fig.suptitle("模拟退火搜索轨迹", color=_TEXT_PRI, fontsize=13, fontweight="bold", y=0.99)
+    fig.suptitle("模拟退火搜索轨迹", color=TEXT_PRI, fontsize=13, fontweight="bold", y=0.99)
     plt.tight_layout()
 
     if save_to_file:
@@ -435,7 +420,7 @@ def plot_annealing_curve(all_cost_history, save_to_file=False,
             filepath = os.path.join(output_dir, f"{filename}_annealing.png")
         else:
             filepath = f"{filename}_annealing.png"
-        fig.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=_BG)
+        fig.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=BG)
         print(f"退火曲线已保存: {filepath}")
     plt.show()
 
@@ -443,12 +428,12 @@ def plot_annealing_curve(all_cost_history, save_to_file=False,
 def plot_convergence_summary(all_cost_history, save_to_file=False,
                              filename=None, output_dir=None):
     """汇总图：所有重启的最优成本曲线叠加对比"""
-    fig, ax = plt.subplots(figsize=(12, 5), facecolor=_BG)
-    ax.set_facecolor(_PANEL)
+    fig, ax = plt.subplots(figsize=(12, 5), facecolor=BG)
+    ax.set_facecolor(PANEL)
     for sp in ax.spines.values():
-        sp.set_edgecolor(_GRID)
-    ax.tick_params(colors=_TEXT_SEC, labelsize=8)
-    ax.grid(True, color=_GRID, linewidth=0.5, alpha=0.6)
+        sp.set_edgecolor(GRID)
+    ax.tick_params(colors=TEXT_SEC, labelsize=8)
+    ax.grid(True, color=GRID, linewidth=0.5, alpha=0.6)
 
     restart_colors = ["#58a6ff", "#3fb950", "#f78166"]
     best_overall = float("inf")
@@ -461,11 +446,11 @@ def plot_convergence_summary(all_cost_history, save_to_file=False,
         best_overall = min(best_overall, cost_hist[-1])
 
     ax.axhline(y=best_overall, color="#d2a8ff", linewidth=1, linestyle="--", alpha=0.5)
-    ax.set_xlabel("迭代次数", color=_TEXT_SEC, fontsize=9)
-    ax.set_ylabel("最优距离", color=_TEXT_SEC, fontsize=9)
+    ax.set_xlabel("迭代次数", color=TEXT_SEC, fontsize=9)
+    ax.set_ylabel("最优距离", color=TEXT_SEC, fontsize=9)
     ax.set_title(f"模拟退火收敛对比  ·  全局最优: {best_overall:.2f}",
-                 color=_TEXT_PRI, fontsize=12, fontweight="bold")
-    ax.legend(fontsize=8.5, facecolor=_PANEL, edgecolor=_GRID, labelcolor=_TEXT_PRI)
+                 color=TEXT_PRI, fontsize=12, fontweight="bold")
+    ax.legend(fontsize=8.5, facecolor=PANEL, edgecolor=GRID, labelcolor=TEXT_PRI)
     plt.tight_layout()
 
     if save_to_file:
@@ -476,7 +461,7 @@ def plot_convergence_summary(all_cost_history, save_to_file=False,
             filepath = os.path.join(output_dir, f"{filename}_convergence.png")
         else:
             filepath = f"{filename}_convergence.png"
-        fig.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=_BG)
+        fig.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=BG)
         print(f"收敛汇总图已保存: {filepath}")
     plt.show()
 

@@ -222,6 +222,198 @@ def plot_all_comparison(greedy_result, genetic_result, sa_result,
     plt.show()
 
 
+def print_multi_seed_summary(all_results, algo_names, seeds, output_dir):
+    """多种子评估汇总：打印均值±标准差，并保存到文件"""
+    from datetime import datetime
+
+    print(f"\n{'='*80}")
+    print("多随机种子评估汇总")
+    print(f"{'='*80}")
+    print(f"种子列表: {seeds}")
+    print(f"样本数:   {len(seeds)}")
+    print()
+
+    active_algos = [k for k in ['greedy', 'genetic', 'sa'] if all_results.get(k)]
+
+    # 表头
+    header = f"{'指标':<20}"
+    for key in active_algos:
+        header += f" {algo_names[key]:>22}"
+    print(header)
+    print("-" * 80)
+
+    # 总飞行距离
+    print(f"{'总飞行距离':<20}", end="")
+    for key in active_algos:
+        dists = [r['total_distance'] for r in all_results[key]]
+        mean_d = np.mean(dists)
+        std_d = np.std(dists, ddof=1) if len(dists) > 1 else 0
+        print(f" {mean_d:>15.2f}±{std_d:>5.2f}", end="")
+    print()
+
+    # 总趟次
+    print(f"{'总趟次':<20}", end="")
+    for key in active_algos:
+        trips = [r['total_trips'] for r in all_results[key]]
+        mean_t = np.mean(trips)
+        std_t = np.std(trips, ddof=1) if len(trips) > 1 else 0
+        print(f" {mean_t:>15.1f}±{std_t:>5.1f}", end="")
+    print()
+
+    # 总配送次数
+    print(f"{'总配送次数':<20}", end="")
+    for key in active_algos:
+        deliveries = [r['total_deliveries'] for r in all_results[key]]
+        mean_d = np.mean(deliveries)
+        std_d = np.std(deliveries, ddof=1) if len(deliveries) > 1 else 0
+        print(f" {mean_d:>15.1f}±{std_d:>5.1f}", end="")
+    print()
+
+    print("-" * 80)
+
+    # 相比贪心基线的改进
+    if all_results.get('greedy'):
+        greedy_mean = np.mean([r['total_distance'] for r in all_results['greedy']])
+        for key in ['genetic', 'sa']:
+            if all_results.get(key):
+                algo_mean = np.mean([r['total_distance'] for r in all_results[key]])
+                imp = greedy_mean - algo_mean
+                imp_pct = imp / greedy_mean * 100
+                print(f"{algo_names[key]} 相比贪心基线（均值），总距离减少: "
+                      f"{imp:+.2f} 单位 ({imp_pct:+.1f}%)")
+
+    # 各次详细结果
+    print(f"\n各次详细结果:")
+    for key in active_algos:
+        dists = [r['total_distance'] for r in all_results[key]]
+        detail = ", ".join(f"{d:.2f}" for d in dists)
+        print(f"  {algo_names[key]}: [{detail}]")
+
+    print("=" * 80)
+
+    # 保存汇总到文件
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        filepath = os.path.join(output_dir,
+            f"multi_seed_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write("多随机种子评估汇总\n")
+            f.write(f"种子: {seeds}\n")
+            f.write(f"样本数: {len(seeds)}\n\n")
+            for key in active_algos:
+                dists = [r['total_distance'] for r in all_results[key]]
+                trips = [r['total_trips'] for r in all_results[key]]
+                f.write(f"{algo_names[key]}:\n")
+                f.write(f"  总距离: {np.mean(dists):.2f} ± {np.std(dists, ddof=1):.2f}\n")
+                f.write(f"  各次: {[f'{d:.2f}' for d in dists]}\n")
+                f.write(f"  趟次: {np.mean(trips):.1f} ± {np.std(trips, ddof=1):.1f}\n\n")
+            if all_results.get('greedy'):
+                greedy_mean = np.mean([r['total_distance'] for r in all_results['greedy']])
+                for key in ['genetic', 'sa']:
+                    if all_results.get(key):
+                        algo_mean = np.mean([r['total_distance'] for r in all_results[key]])
+                        imp_pct = (greedy_mean - algo_mean) / greedy_mean * 100
+                        f.write(f"{algo_names[key]} 相比贪心提升: {imp_pct:.1f}%\n")
+        print(f"\n汇总已保存: {filepath}")
+
+
+def run_multi_seed_evaluation(args, output_dir):
+    """多随机种子评估：在多个数据样本上运行算法，统计均值±标准差"""
+    import matplotlib
+    matplotlib.use('Agg')
+
+    from drone_delivery import run_greedy, greedy_assignment
+    from drone_delivery_genetic import run_genetic, run_genetic_algorithm
+    from drone_delivery_sa import run_sa, simulated_annealing
+
+    seeds = list(range(RANDOM_SEED, RANDOM_SEED + args.seeds))
+
+    all_results = {'greedy': [], 'genetic': [], 'sa': []}
+    algo_names = {'greedy': '贪心算法', 'genetic': '遗传算法', 'sa': '模拟退火'}
+
+    print(f"\n{'='*70}")
+    print(f"多随机种子评估模式：{args.seeds} 个种子 ({seeds[0]} ~ {seeds[-1]})")
+    print(f"{'='*70}")
+
+    for idx, seed in enumerate(seeds):
+        print(f"\n--- 种子 {seed} ({idx+1}/{args.seeds}) ---")
+
+        clients = generate_simulation_data(seed=seed)
+        clients = clean_data(clients)
+        dist_matrix = compute_distance_matrix(clients)
+        is_last = (idx == args.seeds - 1)
+
+        if args.algo in ('greedy', 'both', 'all'):
+            routes = greedy_assignment(clients, dist_matrix, MAX_CAPACITY, MAX_DISTANCE)
+            total_dist = sum(r['distance'] for r in routes)
+            all_results['greedy'].append({
+                'clients': clients, 'routes': routes, 'dist_matrix': dist_matrix,
+                'total_distance': total_dist, 'total_trips': len(routes),
+                'total_deliveries': sum(r['deliveries'] for r in routes),
+            })
+            print(f"  贪心: {total_dist:.2f} ({len(routes)} 趟)")
+
+        if args.algo in ('genetic', 'both', 'all'):
+            best_routes, logbook = run_genetic_algorithm(
+                clients, dist_matrix, args.num_drones
+            )
+            total_dist = sum(r['distance'] for r in best_routes)
+            all_results['genetic'].append({
+                'clients': clients, 'routes': best_routes, 'dist_matrix': dist_matrix,
+                'total_distance': total_dist, 'total_trips': len(best_routes),
+                'total_deliveries': sum(r['deliveries'] for r in best_routes),
+                'logbook': logbook,
+            })
+            print(f"  遗传: {total_dist:.2f} ({len(best_routes)} 趟)")
+
+        if args.algo in ('sa', 'all'):
+            _, best_routes, best_cost, _ = simulated_annealing(
+                clients, dist_matrix, args.num_drones
+            )
+            all_results['sa'].append({
+                'clients': clients, 'routes': best_routes, 'dist_matrix': dist_matrix,
+                'total_distance': best_cost, 'total_trips': len(best_routes),
+                'total_deliveries': sum(r['deliveries'] for r in best_routes),
+            })
+            print(f"  退火: {best_cost:.2f} ({len(best_routes)} 趟)")
+
+        # 最后一个种子：生成完整可视化输出（图表+文本文件）
+        if is_last:
+            print(f"\n[种子 {seed}] 生成可视化输出...")
+            if args.algo in ('greedy', 'both', 'all'):
+                run_greedy(clients=clients, output_dir=output_dir)
+            if args.algo in ('genetic', 'both', 'all'):
+                run_genetic(num_drones=args.num_drones, clients=clients,
+                            output_dir=output_dir)
+            if args.algo in ('sa', 'all'):
+                run_sa(num_drones=args.num_drones, clients=clients,
+                       output_dir=output_dir)
+
+    # 打印汇总统计
+    print_multi_seed_summary(all_results, algo_names, seeds, output_dir)
+
+    # 生成对比图（所有种子的数据来自最后一个种子）
+    if args.algo in ('both', 'all'):
+        last_results = {}
+        if all_results['greedy']:
+            last_results['greedy'] = all_results['greedy'][-1]
+        if all_results['genetic']:
+            last_results['genetic'] = all_results['genetic'][-1]
+        if all_results['sa']:
+            last_results['sa'] = all_results['sa'][-1]
+
+        if len(last_results) == 3:
+            plot_all_comparison(
+                last_results['greedy'], last_results['genetic'],
+                last_results['sa'], save_to_file=True, output_dir=output_dir
+            )
+        elif 'greedy' in last_results and 'genetic' in last_results:
+            plot_comparison(
+                last_results['greedy'], last_results['genetic'],
+                save_to_file=True, output_dir=output_dir
+            )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='无人机配送路径规划',
@@ -231,12 +423,15 @@ def main():
     python main.py --algo greedy       # 仅贪心算法
     python main.py --algo genetic      # 仅遗传算法
     python main.py --algo both         # 两者对比
+    python main.py --algo all --seeds 5  # 5个随机种子评估
     python main.py --no-show           # 不显示图形窗口
         ''')
     parser.add_argument('--algo', choices=['greedy', 'genetic', 'sa', 'both', 'all'],
                         default='both', help='算法选择 (默认: both)')
     parser.add_argument('--num-drones', type=int, default=10,
-                        help='遗传算法无人机数量 (默认: 10)')
+                        help='无人机数量 (默认: 10)')
+    parser.add_argument('--seeds', type=int, default=1,
+                        help='多种子评估的种子数量 (默认: 1，即单次运行)')
     parser.add_argument('--no-show', action='store_true',
                         help='不显示图形窗口 (用于批处理)')
     parser.add_argument('--output-dir', default='../outputs',
@@ -244,6 +439,23 @@ def main():
     args = parser.parse_args()
 
     output_dir = os.path.abspath(args.output_dir)
+
+    print("=" * 60)
+    print("无人机配送路径规划")
+    print("=" * 60)
+    print(f"随机种子基准: {RANDOM_SEED}")
+    print(f"客户数:       {NUM_CLIENTS}")
+    print(f"载重限制:     {MAX_CAPACITY} kg")
+    print(f"里程限制:     {MAX_DISTANCE} 单位")
+    print(f"无人机数量:   {args.num_drones}")
+    print(f"输出目录:     {output_dir}")
+    print("=" * 60)
+
+    # 多种子评估模式
+    if args.seeds > 1:
+        run_multi_seed_evaluation(args, output_dir)
+        print("\n完成！")
+        return
 
     # 非交互后端：使用 Agg 避免 plt.show() 弹窗阻塞（需在导入 pyplot 前设置）
     if args.no_show:
@@ -254,16 +466,6 @@ def main():
     from drone_delivery import run_greedy
     from drone_delivery_genetic import run_genetic
     from drone_delivery_sa import run_sa
-
-    print("=" * 60)
-    print("无人机配送路径规划")
-    print("=" * 60)
-    print(f"随机种子: {RANDOM_SEED}")
-    print(f"客户数:   {NUM_CLIENTS}")
-    print(f"载重限制: {MAX_CAPACITY} kg")
-    print(f"里程限制: {MAX_DISTANCE} 单位")
-    print(f"输出目录: {output_dir}")
-    print("=" * 60)
 
     # 生成共享数据
     print("\n【数据准备】")
