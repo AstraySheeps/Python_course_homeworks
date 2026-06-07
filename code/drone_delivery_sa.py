@@ -17,7 +17,7 @@ from drone_delivery_genetic import FleetScheduler, decode_individual
 from common import (
     generate_simulation_data, clean_data, compute_distance_matrix,
     RANDOM_SEED, NUM_CLIENTS, COORD_RANGE, WEIGHT_RANGE,
-    MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, DEPOT_COORDS,
+    MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, DEPOT_COORDS, SERVICE_TIME,
     BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE,
     PENALTY_WEIGHT,
 )
@@ -34,11 +34,12 @@ SA_MAX_RESTARTS = 3     # 重启动次数 —— 多次独立搜索取最优
 SA_RESTART_COLORS = ["#58a6ff", "#3fb950", "#f78166"]  # 重启轨迹颜色
 
 
-def evaluate_solution(individual, clients, dist_matrix, num_drones):
-    """适应度 = 总飞行距离 + 约束惩罚（最小化），与遗传算法评估函数一致"""
+def evaluate_solution(individual, clients, dist_matrix, num_drones, time_windows=None):
+    """适应度 = 总飞行距离 + 约束惩罚（最小化），含时间窗违反惩罚"""
     routes, penalty = decode_individual(
         individual, clients, dist_matrix, num_drones,
         MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, PENALTY_WEIGHT,
+        time_windows=time_windows, service_time=SERVICE_TIME,
     )
     total_dist = sum(r["distance"] for r in routes)
     return total_dist + penalty, routes
@@ -75,7 +76,7 @@ def generate_neighbor(individual):
 
 def simulated_annealing(clients, dist_matrix, num_drones,
                         t0=SA_T0, t_min=SA_T_MIN, alpha=SA_ALPHA,
-                        iter_per_t=SA_ITER_PER_T):
+                        iter_per_t=SA_ITER_PER_T, time_windows=None):
     """
     模拟退火主算法。
 
@@ -100,7 +101,7 @@ def simulated_annealing(clients, dist_matrix, num_drones,
         current = list(range(n))
         random.shuffle(current)
         current_cost, current_routes = evaluate_solution(
-            current, clients, dist_matrix, num_drones
+            current, clients, dist_matrix, num_drones, time_windows=time_windows
         )
 
         best = current[:]
@@ -116,7 +117,7 @@ def simulated_annealing(clients, dist_matrix, num_drones,
             for _ in range(iter_per_t):
                 neighbor = generate_neighbor(current)
                 neighbor_cost, neighbor_routes = evaluate_solution(
-                    neighbor, clients, dist_matrix, num_drones
+                    neighbor, clients, dist_matrix, num_drones, time_windows=time_windows
                 )
                 delta = neighbor_cost - current_cost
 
@@ -468,7 +469,7 @@ def plot_convergence_summary(all_cost_history, save_to_file=False,
 
 # ==================== 统一入口 ====================
 
-def run_sa(num_drones=10, clients=None, output_dir=None):
+def run_sa(num_drones=10, clients=None, output_dir=None, time_windows=None):
     """
     运行模拟退火算法管线（可由外部模块调用的统一入口）。
     与 run_genetic 接口一致，便于在 main.py 中互换调用。
@@ -482,7 +483,7 @@ def run_sa(num_drones=10, clients=None, output_dir=None):
 
     dist_matrix = compute_distance_matrix(clients)
     best_individual, best_routes, best_cost, all_cost_history = simulated_annealing(
-        clients, dist_matrix, num_drones
+        clients, dist_matrix, num_drones, time_windows=time_windows
     )
 
     print_results(clients, best_routes, num_drones, save_to_file=True,

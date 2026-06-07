@@ -19,7 +19,7 @@ from common import (
     RANDOM_SEED, NUM_CLIENTS, COORD_RANGE, WEIGHT_RANGE,
     MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, DEPOT_COORDS,
     BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE,
-    PENALTY_WEIGHT,
+    PENALTY_WEIGHT, SERVICE_TIME,
 )
 
 plt.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans"]
@@ -47,18 +47,24 @@ class FleetScheduler:
         self.speed = speed
         self.available_at = [0.0] * num_drones   # 每架无人机的最早就绪时刻，初始值均为0.0，表示所有无人机初始时刻均空闲可用。
 
-    def assign(self, flight_distance: float):
+    def assign(self, flight_distance: float, duration=None):
         """
         为一趟飞行分配飞机。
         选择最早空闲的无人机 → 计算飞行时间 → 更新其就绪时刻。
+        若指定 duration，则使用实际耗时（含等待与服务时间）而非距离/速度。
+
         返回 (drone_id, depart_time, arrive_time)
         """
         drone_id = int(np.argmin(self.available_at))  # 最早空闲的飞机编号
         depart = self.available_at[drone_id]
-        flight_time = flight_distance / self.speed      # 飞行时间 = 距离 / 速度
+        flight_time = duration if duration is not None else flight_distance / self.speed
         arrive = depart + flight_time
         self.available_at[drone_id] = arrive            # 更新该飞机的下次可用时刻
         return drone_id, depart, arrive
+
+    def min_available(self) -> float:
+        """返回最早可用无人机的就绪时刻（不修改状态）"""
+        return min(self.available_at)
 
     def reset(self):
         """重置所有飞机时间轴"""
@@ -66,19 +72,26 @@ class FleetScheduler:
 
 
 def decode_individual(individual, clients, dist_matrix, num_drones,
-                      max_capacity, max_distance, drone_speed, penalty_weight):
+                      max_capacity, max_distance, drone_speed, penalty_weight,
+                      time_windows=None, service_time=1.0):
     """
     将遗传算法个体（客户访问顺序排列）解码为具体飞行路线。
 
     过程：按个体顺序逐一尝试将客户装入当前趟次，
     满足载重&里程约束则加入，否则结束当前趟次、开启新趟次。
     若某客户单独也无法满足约束，则强制分配并施加惩罚项。
+
+    若提供 time_windows=(ready_times, due_times)，则额外检查时间窗：
+    早到则原地等待，迟到则施加惩罚。
     """
     n = len(clients)
-    depot_idx = 0                                    # 配送中心在距离矩阵中的索引
+    depot_idx = 0
     scheduler = FleetScheduler(num_drones, drone_speed)
     routes = []
-    penalty = 0.0                                    # 累积约束违反惩罚
+    penalty = 0.0
+    has_tw = time_windows is not None
+    if has_tw:
+        ready_times, due_times = time_windows
 
     i = 0
     while i < n:
@@ -86,30 +99,50 @@ def decode_individual(individual, clients, dist_matrix, num_drones,
         route = []
         current_load = 0.0
         current_dist = 0.0
-        current_pos = depot_idx                       # 从配送中心出发
+        current_pos = depot_idx
+        depart_time = scheduler.min_available()       # 最早可出发时刻
+        current_time = depart_time                    # 追踪累积时间（含等待与服务）
 
         while i < n:
-            client_idx = individual[i]                 # 按个体编码顺序取下一客户
+            client_idx = individual[i]
             client_weight = clients[client_idx, 2]
-            dist_to_next = dist_matrix[current_pos, client_idx + 1]   # 当前位置→该客户
-            dist_back = dist_matrix[client_idx + 1, depot_idx]        # 该客户→配送中心
+            dist_to_next = dist_matrix[current_pos, client_idx + 1]
+            dist_back = dist_matrix[client_idx + 1, depot_idx]
 
             new_load = current_load + client_weight
-            # 预估总里程 = 已走路程 + 去该客户 + 返回配送中心
             new_dist = current_dist + dist_to_next + dist_back
 
+            # 容量与里程约束检查
             if new_load <= max_capacity and new_dist <= max_distance:
-                # 满足约束：装入当前趟次
+                ready, due = (ready_times[client_idx], due_times[client_idx]) if has_tw else (0, float("inf"))
+                arrival = current_time + dist_to_next / drone_speed
+
+                if arrival > due:
+                    # 迟到 → 按超时量施加惩罚，但仍装入
+                    penalty += penalty_weight * (arrival - due)
+
                 route.append(client_idx)
                 current_load += client_weight
-                current_dist += dist_to_next            # 只累加去程
+                current_dist += dist_to_next
                 current_pos = client_idx + 1
+                # 到达后：等待（若早到）→ 卸货 → 准备飞下一站
+                current_time = max(arrival, ready) + service_time
                 i += 1
             else:
                 if not route:
-                    # 当前趟次为空（第一个客户就超限）→ 强制单独分配并增加惩罚
+                    # 首个客户就超限 → 强制分配并惩罚
                     dist_trip = dist_to_next + dist_back
-                    drone_id, depart, arrive = scheduler.assign(dist_trip)
+                    ready, due = (ready_times[client_idx], due_times[client_idx]) if has_tw else (0, float("inf"))
+                    arrival = depart_time + dist_to_next / drone_speed
+
+                    duration = dist_trip / drone_speed
+                    if has_tw:
+                        wait = max(0, ready - arrival)
+                        late = max(0, arrival - due)
+                        duration += wait + service_time
+                        penalty += penalty_weight * late
+
+                    drone_id, depart, arrive = scheduler.assign(dist_trip, duration=duration)
                     routes.append({
                         "drone_id": drone_id,
                         "depart_time": depart,
@@ -119,18 +152,21 @@ def decode_individual(individual, clients, dist_matrix, num_drones,
                         "distance": dist_trip,
                         "deliveries": 1,
                     })
-                    # 惩罚 = 权重 × (超重部分 + 超距部分)
                     penalty += penalty_weight * (
                         max(0, client_weight - max_capacity)
                         + max(0, dist_trip - max_distance)
                     )
                     i += 1
-                break  # 该客户装不下 → 结束当前趟次，下一轮开启新趟次
+                break
 
         if route:
-            # 加上从最后一个客户返回配送中心的距离
             final_dist = current_dist + dist_matrix[current_pos, depot_idx]
-            drone_id, depart, arrive = scheduler.assign(final_dist)
+            # 实际耗时 = 飞行时间 + 等待时间 + n*服务时间
+            travel_time = final_dist / drone_speed
+            duration = (current_time - depart_time) + dist_matrix[current_pos, depot_idx] / drone_speed
+            if not has_tw:
+                duration = travel_time
+            drone_id, depart, arrive = scheduler.assign(final_dist, duration=duration)
             routes.append({
                 "drone_id": drone_id,
                 "depart_time": depart,
@@ -144,17 +180,18 @@ def decode_individual(individual, clients, dist_matrix, num_drones,
     return routes, penalty
 
 
-def evaluate(individual, clients, dist_matrix, num_drones):
-    """适应度 = 总飞行距离 + 约束惩罚（最小化）"""
+def evaluate(individual, clients, dist_matrix, num_drones, time_windows=None):
+    """适应度 = 总飞行距离 + 约束惩罚（最小化），含时间窗违反惩罚"""
     routes, penalty = decode_individual(
         individual, clients, dist_matrix, num_drones,
         MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, PENALTY_WEIGHT,
+        time_windows=time_windows, service_time=SERVICE_TIME,
     )
     total_dist = sum(r["distance"] for r in routes)
     return (total_dist + penalty,)
 
 
-def run_genetic_algorithm(clients, dist_matrix, num_drones):
+def run_genetic_algorithm(clients, dist_matrix, num_drones, time_windows=None):
     """
     使用 DEAP 框架运行遗传算法。
 
@@ -179,7 +216,8 @@ def run_genetic_algorithm(clients, dist_matrix, num_drones):
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
     toolbox.register("evaluate", evaluate, clients=clients,
-                     dist_matrix=dist_matrix, num_drones=num_drones)
+                     dist_matrix=dist_matrix, num_drones=num_drones,
+                     time_windows=time_windows)
     toolbox.register("mate", tools.cxOrdered)                     # 有序交叉（保留排列结构）
     toolbox.register("mutate", tools.mutShuffleIndexes, indpb=2.0 / n)  # 索引洗牌变异
     toolbox.register("select", tools.selTournament, tournsize=GA_TOURNSIZE)  # 锦标赛选择
@@ -256,6 +294,7 @@ def run_genetic_algorithm(clients, dist_matrix, num_drones):
     best_routes, _ = decode_individual(
         best_individual, clients, dist_matrix, num_drones,
         MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED, PENALTY_WEIGHT,
+        time_windows=time_windows, service_time=SERVICE_TIME,
     )
     return best_routes, logbook
 
@@ -622,7 +661,7 @@ def plot_evolution(logbook, save_to_file=False, filename=None, output_dir=None):
     plt.show()
 
 
-def run_genetic(num_drones=10, clients=None, output_dir=None):
+def run_genetic(num_drones=10, clients=None, output_dir=None, time_windows=None):
     """
     运行遗传算法管线（可由外部模块调用的统一入口）。
     与 run_greedy 接口一致，便于在 main.py 中互换调用。
@@ -636,7 +675,8 @@ def run_genetic(num_drones=10, clients=None, output_dir=None):
         clients = clean_data(clients)
 
     dist_matrix = compute_distance_matrix(clients)
-    best_routes, logbook = run_genetic_algorithm(clients, dist_matrix, num_drones)
+    best_routes, logbook = run_genetic_algorithm(clients, dist_matrix, num_drones,
+                                                  time_windows=time_windows)
 
     # 输出三种可视化：文本结果、路线图（总览+详情）、进化曲线
     print_results(clients, best_routes, num_drones, save_to_file=True,

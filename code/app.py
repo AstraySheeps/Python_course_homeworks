@@ -19,9 +19,10 @@ from matplotlib.patches import FancyArrowPatch, Circle
 
 from common import (
     generate_simulation_data, clean_data, compute_distance_matrix,
+    generate_time_windows,
     RANDOM_SEED, NUM_CLIENTS, MAX_CAPACITY, MAX_DISTANCE, DRONE_SPEED,
     DEPOT_COORDS, BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE,
-    PENALTY_WEIGHT,
+    PENALTY_WEIGHT, SERVICE_TIME,
 )
 from drone_delivery import greedy_assignment
 
@@ -237,6 +238,9 @@ def main():
         seed = st.number_input("随机种子", 1, 9999, 42,
                                help="控制数据生成和算法初始化的随机性")
 
+        use_tw = st.checkbox("启用时间窗约束",
+                             help="每个客户有配送时间窗口，早到等待、迟到惩罚")
+
         st.divider()
 
         # 遗传算法超参数
@@ -273,16 +277,20 @@ def main():
     # ---- 执行算法 ----
     if run_clicked:
         with st.spinner("🔄 正在生成数据并运行算法…"):
-            # 生成数据
             clients = generate_simulation_data(num_clients=n_clients, seed=seed)
             clients = clean_data(clients)
             dist_matrix = compute_distance_matrix(clients)
+
+            time_windows = None
+            if use_tw:
+                time_windows = generate_time_windows(clients, dist_matrix, seed=seed)
 
             results = {}
 
             # 贪心算法
             if algo in ("全部对比", "贪心算法"):
-                routes = greedy_assignment(clients, dist_matrix, MAX_CAPACITY, MAX_DISTANCE)
+                routes = greedy_assignment(clients, dist_matrix, MAX_CAPACITY, MAX_DISTANCE,
+                                            time_windows=time_windows)
                 results['greedy'] = {
                     'clients': clients,
                     'routes': routes,
@@ -298,7 +306,7 @@ def main():
                 ga_mod.GA_CXPB = ga_cx
                 ga_mod.GA_MUTPB = ga_mut
                 best_routes, logbook = ga_mod.run_genetic_algorithm(
-                    clients, dist_matrix, n_drones,
+                    clients, dist_matrix, n_drones, time_windows=time_windows,
                 )
                 results['genetic'] = {
                     'clients': clients,
@@ -314,7 +322,7 @@ def main():
                 sa_mod.SA_MAX_RESTARTS = sa_restarts
                 _, best_routes, best_cost, cost_history = sa_mod.simulated_annealing(
                     clients, dist_matrix, n_drones,
-                    t0=sa_t0, alpha=sa_alpha,
+                    t0=sa_t0, alpha=sa_alpha, time_windows=time_windows,
                 )
                 results['sa'] = {
                     'clients': clients,

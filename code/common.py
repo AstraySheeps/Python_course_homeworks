@@ -17,7 +17,10 @@ MAX_CAPACITY = 20         # 单架最大载重（kg）
 MAX_DISTANCE = 200        # 单趟最大飞行里程（欧氏距离单位）
 DRONE_SPEED = 10.0        # 飞行速度（距离单位/时间单位）
 DEPOT_COORDS = [50, 50]   # 配送中心坐标
-PENALTY_WEIGHT = 1e4      # 约束违反惩罚系数（超重/超距的放大倍数）
+PENALTY_WEIGHT = 1e4      # 约束违反惩罚系数（超重/超距/超时窗的放大倍数）
+SERVICE_TIME = 1.0        # 每个客户点的卸货服务时间（时间单位）
+TW_READY_OFFSET = (0, 15) # 最早到达时间后的随机偏移范围（时间单位），生成时间窗用
+TW_WIDTH_RANGE = (15, 40) # 时间窗宽度范围（时间单位），due_time = ready_time + width
 
 # ==================== 暗色主题配色（所有算法共用） ====================
 BG = "#0d1117"            # 图表背景
@@ -31,6 +34,36 @@ PALETTE = [                # 无人机路线色板（最多16架不同颜色）
     "#79c0ff", "#56d364", "#ff7b72", "#bc8cff", "#ffb347",
     "#63e6be", "#f8a5c2", "#a9dc76", "#fc9867", "#ab9df2", "#78dce8",
 ]
+
+
+def generate_time_windows(clients, dist_matrix, speed=DRONE_SPEED,
+                          ready_offset=TW_READY_OFFSET,
+                          width_range=TW_WIDTH_RANGE, seed=RANDOM_SEED):
+    """为每个客户生成可行的配送时间窗。
+
+    时间窗基于"从配送中心直达该客户的最早到达时刻"计算，
+    确保每个客户的时间窗都是可达的。
+
+    Args:
+        clients: shape=(n, 3) 客户数据
+        dist_matrix: shape=(n+1, n+1) 距离矩阵
+        speed: 飞行速度
+        ready_offset: (min, max) 最早到达后的随机偏移范围
+        width_range: (min, max) 时间窗宽度范围
+        seed: 随机种子
+
+    Returns:
+        (ready_times, due_times): shape=(n,) 的 ndarray
+    """
+    n = len(clients)
+    rng = np.random.RandomState(seed)
+    depot_to_clients = dist_matrix[0, 1:]          # 配送中心到各客户的距离
+    earliest_arrivals = depot_to_clients / speed   # 最早可达时刻
+
+    ready_times = earliest_arrivals + rng.uniform(ready_offset[0], ready_offset[1], size=n)
+    widths = rng.uniform(width_range[0], width_range[1], size=n)
+    due_times = ready_times + widths
+    return ready_times, due_times
 
 
 def generate_simulation_data(num_clients=NUM_CLIENTS, coord_range=None,

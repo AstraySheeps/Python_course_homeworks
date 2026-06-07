@@ -14,63 +14,82 @@ from common import (
     RANDOM_SEED, NUM_CLIENTS, COORD_RANGE, WEIGHT_RANGE,
     NUM_DRONES, MAX_CAPACITY, MAX_DISTANCE, DEPOT_COORDS,
     BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE,
+    DRONE_SPEED, SERVICE_TIME, PENALTY_WEIGHT,
 )
 
 plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 
-def greedy_assignment(clients, dist_matrix, max_capacity, max_distance):
+def greedy_assignment(clients, dist_matrix, max_capacity, max_distance,
+                      time_windows=None):
     """
     改进贪心算法分配路径。
     每趟路线中，若最近客户装不下，继续尝试次近客户，而非直接放弃。
     当所有剩余客户都无法装入当前路线时才开启新路线。
+
+    若提供 time_windows=(ready_times, due_times)，则选择客户时综合考虑
+    距离和时间窗：迟到按惩罚系数影响排序优先级，早到允许等待。
     """
     n = len(clients)
-    unassigned = set(range(n))          # 未分配客户集合
+    unassigned = set(range(n))
     drone_routes = []
-    depot_idx = 0                        # 配送中心在距离矩阵中的索引
-    max_iterations = n * 10              # 安全上限，防止死循环
+    depot_idx = 0
+    max_iterations = n * 10
+    has_tw = time_windows is not None
+    if has_tw:
+        ready_times, due_times = time_windows
 
     iterations = 0
     while unassigned and iterations < max_iterations:
         iterations += 1
-        # 开始一趟新飞行
         current_route = []
-        current_load = 0
-        current_distance = 0
-        current_pos = depot_idx            # 从配送中心出发
+        current_load = 0.0
+        current_distance = 0.0
+        current_pos = depot_idx
+        current_time = 0.0                     # 累积时间（含等待与服务）
 
         while unassigned:
-            # 计算所有未分配客户到"当前位置"的距离，并排序
             candidates = []
             for client_idx in unassigned:
                 dist = dist_matrix[current_pos, client_idx + 1]
-                candidates.append((dist, client_idx))
-            candidates.sort(key=lambda x: x[0])  # 按距离从小到大
+                if has_tw:
+                    travel_time = dist / DRONE_SPEED
+                    arrival = current_time + travel_time
+                    ready, due = ready_times[client_idx], due_times[client_idx]
+                    # 迟到惩罚（换算为等效距离）远大于等待惩罚
+                    late = max(0.0, arrival - due)
+                    wait = max(0.0, ready - arrival)
+                    key = dist + (late * 3.0 + wait * 0.1) * DRONE_SPEED
+                else:
+                    key = dist
+                candidates.append((key, dist, client_idx))
+            candidates.sort(key=lambda x: x[0])
 
             found = False
-            for min_dist, client_idx in candidates:
+            for _, min_dist, client_idx in candidates:
                 client_weight = clients[client_idx, 2]
                 new_load = current_load + client_weight
-                # 新总里程 = 已走 + 去该客户 + 从该客户回配送中心
                 new_dist = current_distance + min_dist + dist_matrix[client_idx + 1, depot_idx]
 
-                # 两个约束：载重上限 + 里程上限
                 if new_load <= max_capacity and new_dist <= max_distance:
                     current_route.append(client_idx)
                     current_load = new_load
-                    current_distance += min_dist   # 只累加去程，回程在下面统一加
-                    current_pos = client_idx + 1    # +1 因为距离矩阵第0行是配送中心
+                    current_distance += min_dist
+                    if has_tw:
+                        travel_time = min_dist / DRONE_SPEED
+                        arrival = current_time + travel_time
+                        ready = ready_times[client_idx]
+                        current_time = max(arrival, ready) + SERVICE_TIME
+                    current_pos = client_idx + 1
                     unassigned.remove(client_idx)
                     found = True
                     break
 
             if not found:
-                break  # 无人可装，结束当前路线
+                break
 
         if current_route:
-            # 加上从最后一个客户返回配送中心的距离
             current_distance += dist_matrix[current_pos, depot_idx]
             drone_routes.append({
                 'route': current_route,
@@ -79,8 +98,6 @@ def greedy_assignment(clients, dist_matrix, max_capacity, max_distance):
                 'deliveries': len(current_route)
             })
         else:
-            # 死胡同：所有剩余客户单独都无法满足约束
-            # 强制逐客户分配（每人一趟往返），并记录警告
             remaining = list(unassigned)
             for client_idx in remaining:
                 client_weight = clients[client_idx, 2]
@@ -267,17 +284,17 @@ def print_results(clients, routes, save_to_file=False, filename=None, output_dir
     return "\n".join(result_lines)
 
 
-def run_greedy(clients=None, output_dir=None):
+def run_greedy(clients=None, output_dir=None, time_windows=None):
     """运行贪心算法并返回结果（可由外部模块调用的统一入口）"""
     from datetime import datetime
 
-    # 若无外部数据，自动生成并清洗
     if clients is None:
         clients = generate_simulation_data()
         clients = clean_data(clients)
 
     dist_matrix = compute_distance_matrix(clients)
-    routes = greedy_assignment(clients, dist_matrix, MAX_CAPACITY, MAX_DISTANCE)
+    routes = greedy_assignment(clients, dist_matrix, MAX_CAPACITY, MAX_DISTANCE,
+                                time_windows=time_windows)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_filename = f"drone_delivery_{timestamp}"

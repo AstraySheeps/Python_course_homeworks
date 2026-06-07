@@ -20,6 +20,7 @@ from datetime import datetime
 
 from common import (
     generate_simulation_data, clean_data, compute_distance_matrix,
+    generate_time_windows,
     RANDOM_SEED, NUM_CLIENTS, COORD_RANGE, WEIGHT_RANGE,
     MAX_CAPACITY, MAX_DISTANCE, DEPOT_COORDS,
 )
@@ -343,8 +344,14 @@ def run_multi_seed_evaluation(args, output_dir):
         dist_matrix = compute_distance_matrix(clients)
         is_last = (idx == args.seeds - 1)
 
+        # 时间窗约束
+        time_windows = None
+        if args.tw:
+            time_windows = generate_time_windows(clients, dist_matrix, seed=seed)
+
         if args.algo in ('greedy', 'both', 'all'):
-            routes = greedy_assignment(clients, dist_matrix, MAX_CAPACITY, MAX_DISTANCE)
+            routes = greedy_assignment(clients, dist_matrix, MAX_CAPACITY, MAX_DISTANCE,
+                                        time_windows=time_windows)
             total_dist = sum(r['distance'] for r in routes)
             all_results['greedy'].append({
                 'clients': clients, 'routes': routes, 'dist_matrix': dist_matrix,
@@ -355,7 +362,7 @@ def run_multi_seed_evaluation(args, output_dir):
 
         if args.algo in ('genetic', 'both', 'all'):
             best_routes, logbook = run_genetic_algorithm(
-                clients, dist_matrix, args.num_drones
+                clients, dist_matrix, args.num_drones, time_windows=time_windows
             )
             total_dist = sum(r['distance'] for r in best_routes)
             all_results['genetic'].append({
@@ -368,7 +375,7 @@ def run_multi_seed_evaluation(args, output_dir):
 
         if args.algo in ('sa', 'all'):
             _, best_routes, best_cost, _ = simulated_annealing(
-                clients, dist_matrix, args.num_drones
+                clients, dist_matrix, args.num_drones, time_windows=time_windows
             )
             all_results['sa'].append({
                 'clients': clients, 'routes': best_routes, 'dist_matrix': dist_matrix,
@@ -381,13 +388,14 @@ def run_multi_seed_evaluation(args, output_dir):
         if is_last:
             print(f"\n[种子 {seed}] 生成可视化输出...")
             if args.algo in ('greedy', 'both', 'all'):
-                run_greedy(clients=clients, output_dir=output_dir)
+                run_greedy(clients=clients, output_dir=output_dir,
+                           time_windows=time_windows)
             if args.algo in ('genetic', 'both', 'all'):
                 run_genetic(num_drones=args.num_drones, clients=clients,
-                            output_dir=output_dir)
+                            output_dir=output_dir, time_windows=time_windows)
             if args.algo in ('sa', 'all'):
                 run_sa(num_drones=args.num_drones, clients=clients,
-                       output_dir=output_dir)
+                       output_dir=output_dir, time_windows=time_windows)
 
     # 打印汇总统计
     print_multi_seed_summary(all_results, algo_names, seeds, output_dir)
@@ -436,6 +444,8 @@ def main():
                         help='不显示图形窗口 (用于批处理)')
     parser.add_argument('--output-dir', default='../outputs',
                         help='输出目录 (默认: ../outputs)')
+    parser.add_argument('--tw', action='store_true',
+                        help='启用时间窗约束（每个客户有指定配送时间窗口）')
     args = parser.parse_args()
 
     output_dir = os.path.abspath(args.output_dir)
@@ -471,6 +481,14 @@ def main():
     print("\n【数据准备】")
     clients = generate_simulation_data()
     clients = clean_data(clients)
+
+    # 时间窗约束（可选）
+    time_windows = None
+    if args.tw:
+        dist_matrix = compute_distance_matrix(clients)
+        time_windows = generate_time_windows(clients, dist_matrix)
+        tw_info = f"就绪最早={time_windows[0].min():.1f}~{time_windows[0].max():.1f}, 截止最晚={time_windows[1].min():.1f}~{time_windows[1].max():.1f}"
+        print(f"时间窗约束已启用: {tw_info}")
     print()
 
     greedy_result = None
@@ -481,14 +499,16 @@ def main():
         print("=" * 60)
         print(">>> 运行贪心算法")
         print("=" * 60)
-        greedy_result = run_greedy(clients=clients, output_dir=output_dir)
+        greedy_result = run_greedy(clients=clients, output_dir=output_dir,
+                                   time_windows=time_windows)
 
     if args.algo in ('genetic', 'both', 'all'):
         print("\n" + "=" * 60)
         print(">>> 运行遗传算法")
         print("=" * 60)
         genetic_result = run_genetic(
-            num_drones=args.num_drones, clients=clients, output_dir=output_dir
+            num_drones=args.num_drones, clients=clients, output_dir=output_dir,
+            time_windows=time_windows,
         )
 
     if args.algo in ('sa', 'all'):
@@ -496,7 +516,8 @@ def main():
         print(">>> 运行模拟退火算法")
         print("=" * 60)
         sa_result = run_sa(
-            num_drones=args.num_drones, clients=clients, output_dir=output_dir
+            num_drones=args.num_drones, clients=clients, output_dir=output_dir,
+            time_windows=time_windows,
         )
 
     if args.algo in ('both', 'all') and greedy_result and genetic_result and sa_result:
