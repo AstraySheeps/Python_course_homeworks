@@ -7,11 +7,12 @@
 ```
 无人机配送规划/
 ├── code/                               # 源代码
-│   ├── common.py                       # 共享模块：配置常量、数据生成、清洗、距离矩阵
+│   ├── common.py                       # 共享模块：配置常量、数据生成、清洗、距离矩阵、配色
 │   ├── drone_delivery.py               # 贪心算法基线
 │   ├── drone_delivery_genetic.py       # 遗传算法（基于 DEAP）
 │   ├── drone_delivery_sa.py            # 模拟退火算法
-│   ├── main.py                         # 统一入口，支持算法切换与对比
+│   ├── main.py                         # 统一入口，支持算法切换、对比与多种子评估
+│   ├── app.py                          # Streamlit 交互式 Web 界面
 │   └── requirements.txt                # Python 依赖
 ├── docs/                               # 文档
 │   ├── 基线实现目标.txt                 # 项目初始任务说明
@@ -53,25 +54,23 @@ python main.py --algo all
 ## 运行方式
 
 ```bash
-# 单独运行某个算法
-python main.py --algo greedy       # 仅贪心算法
-python main.py --algo genetic      # 仅遗传算法
-python main.py --algo sa           # 仅模拟退火
-python main.py --algo both         # 贪心 vs 遗传（默认）
-python main.py --algo all          # 三种算法对比
+# 命令行模式
+python main.py --algo all              # 三种算法对比
+python main.py --algo all --seeds 5    # 5个随机种子评估
 
-# 设置无人机数量
-python main.py --algo all --num-drones 10
-
-# 批处理模式（不弹窗）
-python main.py --algo all --no-show
-
-# 指定输出目录
-python main.py --algo all --output-dir ./my_outputs
-
-# 模拟退火调参
-python drone_delivery_sa.py --t0 1000 --alpha 0.99
+# 交互式Web界面（推荐用于演示）
+streamlit run app.py
 ```
+
+### 命令行参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--algo` | 算法选择：greedy / genetic / sa / both / all | both |
+| `--num-drones` | 无人机数量 | 10 |
+| `--seeds` | 多种子评估的种子数量 | 1（单次） |
+| `--no-show` | 不显示图形窗口 | — |
+| `--output-dir` | 输出目录 | ../outputs |
 
 ## 典型结果
 
