@@ -1,121 +1,111 @@
-# 无人机配送路径规划
+# 无人机集群配送路径规划
 
-基于 Python 的无人机集群配送路径优化系统，使用贪心算法、遗传算法和模拟退火算法对多无人机多客户配送场景进行路径规划与对比分析。
+基于 Python 的无人机集群配送路径优化系统。在贴近真实低空物流场景下，设计并对比四种优化算法（贪心、模拟退火、遗传、随机搜索），采用统一人民币成本模型，支持多场景实验与统计显著性分析。
 
 ## 项目结构
 
 ```
 无人机配送规划/
-├── code/                               # 源代码
-│   ├── common.py                       # 共享模块：配置常量、数据生成、清洗、距离矩阵、配色
-│   ├── drone_delivery.py               # 贪心算法基线
-│   ├── drone_delivery_genetic.py       # 遗传算法（基于 DEAP）
-│   ├── drone_delivery_sa.py            # 模拟退火算法
-│   ├── main.py                         # 统一入口，支持算法切换、对比与多种子评估
-│   ├── app.py                          # Streamlit 交互式 Web 界面
-│   └── requirements.txt                # Python 依赖
-├── docs/                               # 文档
-│   ├── 总体代码理解.md                  # 整体架构与核心代码快速理解
-│   ├── 项目完成度评估.md                # 各维度完成度评估
-│   ├── 后续优化方案.md                  # 优化优先级与行动计划
-│   ├── 完善记录.md                      # 历次修改记录
-│   ├── 遗传算法代码理解.md              # 遗传算法代码详解
-│   └── 模拟退火算法代码理解.md          # 模拟退火算法代码详解
-├── outputs/                            # 输出结果（图表、文本）
-├── report/                             # 选题报告与中期报告
-├── 项目要求/                            # 课程项目任务书
-└── screenshots/                        # 截图
+├── config.py                            # 全局参数（场景/无人机/成本/算法/配色）
+├── main.py                              # 一键运行主脚本
+├── app.py                               # Streamlit 交互式 Web 界面
+├── requirements.txt                     # Python 依赖
+├── data/
+│   ├── generate_data.py                 # 多场景数据生成（含可行性校验）
+│   └── output/                          # CSV 数据文件
+├── src/
+│   ├── models/                          # 数据模型（Customer/Drone/Problem）
+│   ├── algorithms/                      # 算法实现（Base/Greedy/SA/GA/Random）
+│   └── utils/                           # 工具（距离/验证/评估/统计检验）
+├── visualization/                       # 可视化（8张图表）
+│   └── output/                          # 图表 PNG 输出
+├── experiments/                         # 批量实验与敏感性分析
+│   └── output/                          # JSON 结果文件
+├── legacy/                              # v2.0 旧代码（保留参考）
+├── docs/                                # 文档
+│   ├── 最终实施方案（单趟路径问题）.md    # 最终执行方案
+│   ├── 总体代码理解.md                   # 整体架构快速理解
+│   ├── 完善记录.md                       # 历次修改记录
+│   └── ...
+└── tests/                               # 单元测试（预留）
 ```
 
 ## 快速开始
 
 ```bash
-cd code/
+# 1. 安装依赖
 pip install -r requirements.txt
-python main.py --algo all
+
+# 2. 一键运行（标准场景，4种算法对比 + 全部可视化）
+python main.py
+
+# 3. 其他场景
+python main.py --scenario small     # 小规模验证
+python main.py --scenario large     # 大规模压力测试
+
+# 4. 批量实验（30次独立运行 + 统计检验）
+python main.py --runs 30
+
+# 5. 交互式Web界面（推荐用于演示）
+streamlit run app.py
 ```
 
 ## 问题描述
 
-- **客户点**：20 个平面坐标，范围 [0, 100] × [0, 100]，每个客户包裹重量 1–5 kg
-- **无人机**：N 架（默认 10），单架最大载重 20 kg，单架最大里程 200 单位
-- **配送中心**：位于 (50, 50)
-- **目标**：最小化总飞行距离
-- **约束**：单架载重 ≤ 20 kg，单架里程 ≤ 200 单位
-- **可选约束**：时间窗（每个客户有指定配送时间窗口，早到等待、迟到惩罚）
+- **场景**：50×50 km 区域，仓库位于中心(25, 25)
+- **客户**：10/30/50个，含三种类型（紧急20%/普通60%/宽松20%），各有不同的时间窗
+- **无人机**：3/5/8架，载重20kg，速度40km/h，最大航程150km
+- **目标**：最小化统一人民币总成本
+- **成本模型**：
+  - 飞行成本: 0.8 元/km
+  - 运营时间成本: 1.0 元/min
+  - 延迟罚金: 20.0 元/min
+  - 超重罚金: 500.0 元/kg
+  - 超航程罚金: 300.0 元/km
 
-## 三种算法
+## 四种算法
 
 | 算法 | 文件 | 策略 |
 |------|------|------|
-| 贪心算法 | `drone_delivery.py` | 每趟从最近客户开始装，装不下则尝试次近，直到填满 |
-| 遗传算法 | `drone_delivery_genetic.py` | 排列编码 + 锦标赛选择 + 有序交叉 + 索引洗牌变异 + 精英保留 |
-| 模拟退火 | `drone_delivery_sa.py` | 排列编码 + Swap/Reverse/Insert 邻域 + Metropolis 准则 + 指数降温 + 多轮重启 |
+| 贪心算法 | `src/algorithms/greedy.py` | 最近客户优先 + 紧急优先两种变体 |
+| 模拟退火 | `src/algorithms/sa.py` | 5种邻域操作 + 自适应冷却 + 重启机制 |
+| 遗传算法 | `src/algorithms/ga.py` | DEAP排列编码 + OX交叉 + 锦标赛选择 + 早停 |
+| 随机搜索 | `src/algorithms/random_search.py` | 10000次随机排列 + 贪心解码 |
 
-三种算法共享相同的编码/解码方式：将客户访问顺序编码为排列，解码时按顺序贪心打包成满足约束的路线。
-
-## 运行方式
-
-```bash
-# 命令行模式
-python main.py --algo all              # 三种算法对比
-python main.py --algo all --tw         # 三种算法 + 时间窗约束
-python main.py --algo all --seeds 5    # 5个随机种子评估
-
-# 交互式Web界面（推荐用于演示）
-streamlit run app.py
-```
-
-### 命令行参数
+## 命令行参数
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `--algo` | 算法选择：greedy / genetic / sa / both / all | both |
-| `--num-drones` | 无人机数量 | 10 |
-| `--seeds` | 多种子评估的种子数量 | 1（单次） |
-| `--no-show` | 不显示图形窗口 | — |
-| `--tw` | 启用时间窗约束 | — |
-| `--output-dir` | 输出目录 | ../outputs |
-
-## 典型结果
-
-在随机种子 42 下，三种算法对比如下：
-
-| 算法 | 总飞行距离 | 趟次 | 相比贪心提升 |
-|------|-----------|------|-------------|
-| 贪心算法 | 716.65 | 5 | — |
-| 遗传算法 | 549.58 | 4 | +23.3% |
-| 模拟退火 | 532.99 | 4 | +25.6% |
+| `--scenario` | 场景选择：small/standard/large | standard |
+| `--seed` | 随机种子 | 42 |
+| `--runs` | 独立运行次数 | 1 |
+| `--algo` | 算法列表 | greedy sa ga random |
 
 ## 输出文件
 
-每次运行在 `outputs/` 目录下生成：
-
-| 文件 | 内容 |
-|------|------|
-| `drone_delivery_*_*.txt` | 贪心算法文本结果 |
-| `drone_delivery_*_*.png` | 贪心算法路线图 |
-| `drone_delivery_ga_*_*.txt` | 遗传算法文本结果 |
-| `drone_delivery_ga_*_*_overview.png` | 遗传算法总览图 |
-| `drone_delivery_ga_*_*_details.png` | 遗传算法各飞机详情 |
-| `drone_delivery_ga_*_*_evolution.png` | 遗传算法进化曲线 |
-| `drone_delivery_sa_*_*.txt` | 模拟退火文本结果 |
-| `drone_delivery_sa_*_*_overview.png` | 模拟退火总览图 |
-| `drone_delivery_sa_*_*_annealing.png` | 退火搜索轨迹 |
-| `drone_delivery_sa_*_*_convergence.png` | 重启收敛对比 |
-| `comparison_all_*_*.png` | 三算法对比图 |
+运行后在 `visualization/output/` 生成 8 张图表：
+- fig1: 客户分布图
+- fig2: 最优配送路线图
+- fig3: 算法路线对比
+- fig4: 成本对比柱状图+误差棒
+- fig5: 收敛曲线
+- fig6: 多指标分组柱状图
+- fig7: 运行时间vs成本散点图
+- fig8: 负载分布堆叠柱状图
 
 ## 依赖
 
-- **NumPy** — 数值计算与随机数据生成
-- **Matplotlib** — 路径可视化与收敛曲线
-- **DEAP** — 遗传算法框架（仅 `drone_delivery_genetic.py` 需要）
+- NumPy — 数值计算
+- SciPy — 统计检验
+- Matplotlib — 可视化
+- DEAP — 遗传算法框架
+- Pandas — 数据处理
+- Streamlit — 交互式Web界面
 
 ## 文档
 
-- [`docs/总体代码理解.md`](docs/总体代码理解.md) — 项目整体架构与核心代码快速理解
-- [`docs/遗传算法代码理解.md`](docs/遗传算法代码理解.md) — 遗传算法的编码/解码/进化循环详细解释
-- [`docs/模拟退火算法代码理解.md`](docs/模拟退火算法代码理解.md) — 模拟退火的 Metropolis 准则/邻域算子/降温策略详解
-- [`docs/项目完成度评估.md`](docs/项目完成度评估.md) — 项目各维度完成度评估与对照
-- [`docs/后续优化方案.md`](docs/后续优化方案.md) — 优化优先级矩阵与后续行动计划
-- [`docs/完善记录.md`](docs/完善记录.md) — 历次 bug 修复与功能改进记录
+- [`docs/最终实施方案（单趟路径问题）.md`](docs/最终实施方案（单趟路径问题）.md) — 完整执行方案
+- [`docs/总体代码理解.md`](docs/总体代码理解.md) — 项目架构与核心代码快速理解
+- [`docs/完善记录.md`](docs/完善记录.md) — 历次修改记录
+- [`docs/项目完成度评估.md`](docs/项目完成度评估.md) — 各维度完成度评估
+- [`docs/后续优化方案.md`](docs/后续优化方案.md) — 后续优化行动计划
