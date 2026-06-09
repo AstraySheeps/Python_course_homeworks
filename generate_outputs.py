@@ -88,6 +88,7 @@ def run_scenario(scenario_name):
         ok_str = 'Y' if eval_result['is_feasible'] else 'N'
         print(f"  {ALGO_NAMES[algo_name]:<18} cost={cost:>10.2f}  dist={eval_result['total_distance']:>8.2f}km  "
               f"ms={eval_result['makespan']:>8.1f}min  t={elapsed:>6.2f}s  ok={ok_str}")
+        problem.print_violation_report(routes, ALGO_NAMES_CN.get(algo_name, algo_name))
 
     # ---- 图表生成 ----
     print(f"\n  Generating charts...")

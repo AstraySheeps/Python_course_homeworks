@@ -264,6 +264,34 @@ def main():
 
         st.divider()
 
+        # 约束违反分析
+        with st.expander("🔍 约束违反分析", expanded=False):
+            for algo_name, r in results.items():
+                violation_report = problem.get_violation_report(r['routes'])
+                s = violation_report['summary']
+                st.markdown(f"**{ALGO_NAMES.get(algo_name, algo_name)}**")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if s['hard_constraint_satisfied']:
+                        st.success(f"硬约束: ✓ 全部满足")
+                    else:
+                        errs = []
+                        if s['capacity_violations'] > 0:
+                            errs.append(f"载重违反 {s['capacity_violations']} 架")
+                        if s['range_violations'] > 0:
+                            errs.append(f"航程违反 {s['range_violations']} 架")
+                        st.error(f"硬约束: ✗ {'; '.join(errs)}")
+                with c2:
+                    if s['soft_violation_count'] == 0:
+                        st.success(f"时间窗: ✓ 全部准时")
+                    else:
+                        st.warning(
+                            f"延迟 {s['delay_customer_count']}/{problem.n} 客户 "
+                            f"({s['delayed_customer_pct']:.0f}%), "
+                            f"总延迟 {s['total_delay_min']:.0f}min"
+                        )
+                st.divider()
+
         # 路线对比图
         routes_dict = {k: r['routes'] for k, r in results.items()}
         if len(results) >= 2:

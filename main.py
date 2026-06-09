@@ -100,7 +100,8 @@ def run_single(scenario_name='standard', algo_names=None, seed=SEED, verbose=Tru
                   f"距离={eval_result['total_distance']:>8.2f}km  "
                   f"Makespan={eval_result['makespan']:>8.1f}min  "
                   f"耗时={elapsed:>6.2f}s  "
-                  f"可行={'✓' if eval_result['is_feasible'] else '✗'}")
+                  f"feasible={'Y' if eval_result['is_feasible'] else 'N'}")
+            problem.print_violation_report(routes, ALGO_NAMES.get(algo_name, algo_name))
 
     return problem, results
 
@@ -176,7 +177,7 @@ def run_and_visualize(scenario_name='standard', algo_names=None, seed=SEED):
             print(f"{ALGO_NAMES[algo_name]:<16} {r['total_cost']:>12.2f} "
                   f"{r['total_distance']:>10.2f} {r['makespan']:>14.1f} "
                   f"{r['total_delay_time']:>10.4f} "
-                  f"{'✓' if r['is_feasible'] else '✗':>6}")
+                  f"{'Y' if r['is_feasible'] else 'N':>6}")
 
     baseline_cost = results.get('greedy', {}).get('total_cost', 0)
     if baseline_cost > 0:
