@@ -16,9 +16,9 @@
 ├── src/
 │   ├── models/                          # 数据模型（Customer/Drone/Problem）
 │   ├── algorithms/                      # 算法实现（Base/Greedy/SA/GA/Random）
-│   └── utils/                           # 工具（距离/验证/评估/统计检验）
-├── visualization/                       # 可视化（8张图表）
-│   └── output/                          # 图表 PNG 输出
+│   └── utils/                           # 工具（距离/工厂/评估/统计检验）
+├── outputs/                             # 图表 PNG 输出（8张图表）
+├── visualization/                       # 可视化模块
 ├── experiments/                         # 批量实验与敏感性分析
 │   └── output/                          # JSON 结果文件
 ├── legacy/                              # v2.0 旧代码（保留参考）
@@ -27,7 +27,7 @@
 │   ├── 总体代码理解.md                   # 整体架构快速理解
 │   ├── 完善记录.md                       # 历次修改记录
 │   └── ...
-└── tests/                               # 单元测试（预留）
+└── tests/                               # 单元测试
 ```
 
 ## 快速开始
@@ -83,7 +83,7 @@ streamlit run app.py
 
 ## 输出文件
 
-运行后在 `visualization/output/` 生成 8 张图表：
+运行后在 `outputs/` 生成 8 张图表：
 - fig1: 客户分布图
 - fig2: 最优配送路线图
 - fig3: 算法路线对比

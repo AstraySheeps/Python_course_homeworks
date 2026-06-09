@@ -8,62 +8,17 @@ import os
 import sys
 import json
 import time
-import numpy as np
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import SCENARIOS, SEED, NUM_INDEPENDENT_RUNS
+from config import SCENARIOS, SEED, NUM_INDEPENDENT_RUNS, ALGO_NAMES
 from data.generate_data import generate_scenario
-from src.models.customer import Customer
-from src.models.drone import Drone
-from src.models.problem import Problem
-from src.utils.distance import compute_distance_matrix
+from src.utils.factories import build_problem
 from src.utils.statistics import summary_table, paired_ttest
-from src.algorithms.greedy import solve_greedy, solve_greedy_urgent
-from src.algorithms.sa import solve_sa
-from src.algorithms.ga import solve_ga
-from src.algorithms.random_search import solve_random_search
+from src.algorithms import SOLVERS
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'experiments', 'output')
-
-
-def build_problem(customers_dict, num_drones):
-    """从字典列表构建 Problem 实例"""
-    from config import DRONE_CAPACITY, DRONE_SPEED, DRONE_MAX_RANGE, DEPOT_COORDS
-
-    customers = [
-        Customer(
-            id=c['id'], x=c['x'], y=c['y'], demand=c['demand'],
-            customer_type=c['customer_type'],
-            time_window=(c['time_window_start'], c['time_window_end']),
-            service_time=c['service_time'],
-        )
-        for c in customers_dict
-    ]
-    drones = [
-        Drone(i, DRONE_CAPACITY, DRONE_SPEED, DRONE_MAX_RANGE)
-        for i in range(num_drones)
-    ]
-    dist_matrix = compute_distance_matrix(customers, DEPOT_COORDS)
-    return Problem(customers, drones, dist_matrix)
-
-
-ALGORITHMS = {
-    'greedy': solve_greedy,
-    'greedy_urgent': solve_greedy_urgent,
-    'sa': solve_sa,
-    'ga': solve_ga,
-    'random': solve_random_search,
-}
-
-ALGO_NAMES = {
-    'greedy': '贪心算法',
-    'greedy_urgent': '贪心(紧急优先)',
-    'sa': '模拟退火',
-    'ga': '遗传算法',
-    'random': '随机搜索',
-}
 
 
 def run_experiment(scenario_name='standard', algo_names=None,
@@ -92,7 +47,7 @@ def run_experiment(scenario_name='standard', algo_names=None,
 
         for algo_name in algo_names:
             t0 = time.time()
-            solve_fn = ALGORITHMS[algo_name]
+            solve_fn = SOLVERS[algo_name]
             routes, cost, history = solve_fn(problem, seed=seed)
             elapsed = time.time() - t0
             eval_result = problem.evaluate_solution(routes)

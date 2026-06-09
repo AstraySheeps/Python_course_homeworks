@@ -181,12 +181,6 @@ def generate_all_scenarios(seed=SEED):
         generate_scenario(name, seed=seed)
 
 
-def load_customers_from_csv(csv_path):
-    """从 CSV 加载客户数据"""
-    df = pd.read_csv(csv_path)
-    return df.to_dict('records')
-
-
 if __name__ == '__main__':
     generate_all_scenarios()
     print("全部场景数据生成完成！")

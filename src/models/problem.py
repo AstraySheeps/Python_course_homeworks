@@ -194,48 +194,6 @@ class Problem:
             'num_active_drones': sum(1 for r in routes if r),
         }
 
-    # ==================== 约束检查 ====================
-
-    def check_constraints(self, routes):
-        """检查解是否满足所有硬约束
-
-        Returns:
-            dict 含各约束的违反情况
-        """
-        violations = {
-            'capacity': [],
-            'range': [],
-            'visit_once': False,
-            'flow_conservation': True,
-            'depot_depart_return': [],
-        }
-
-        visited = set()
-        for k, route in enumerate(routes):
-            if not route:
-                continue
-            drone = self.drones[k] if k < self.m else self.drones[0]
-
-            # 容量约束
-            load = sum(self.customers[i].demand for i in route)
-            if load > drone.capacity + 1e-6:
-                violations['capacity'].append((k, load, drone.capacity))
-
-            # 航程约束
-            timeline = self.compute_route_timeline(route, k)
-            if timeline['total_distance'] > drone.max_range + 1e-6:
-                violations['range'].append(
-                    (k, timeline['total_distance'], drone.max_range)
-                )
-
-            # 访问唯一性检查
-            for ci in route:
-                if ci in visited:
-                    violations['visit_once'] = True
-                visited.add(ci)
-
-        return violations
-
     # ==================== 约束违反分析报告 ====================
 
     def get_violation_report(self, routes):
@@ -399,13 +357,3 @@ class Problem:
         return (2 * np.sum(index * sorted_vals)
                 / (n * np.sum(sorted_vals)) - (n + 1) / n)
 
-    def get_customer(self, idx):
-        return self.customers[idx]
-
-    @property
-    def num_customers(self):
-        return self.n
-
-    @property
-    def num_drones(self):
-        return self.m

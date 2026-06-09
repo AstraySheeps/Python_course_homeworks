@@ -10,22 +10,13 @@
     python main.py --visualize-only         # 仅生成可视化图表
 """
 
-import os
-import sys
 import argparse
 import time
-import numpy as np
 
-from config import SCENARIOS, SEED, NUM_INDEPENDENT_RUNS, DEPOT_COORDS
+from config import SCENARIOS, SEED, NUM_INDEPENDENT_RUNS, DEPOT_COORDS, ALGO_NAMES
 from data.generate_data import generate_scenario
-from src.models.customer import Customer
-from src.models.drone import Drone
-from src.models.problem import Problem
-from src.utils.distance import compute_distance_matrix
-from src.algorithms.greedy import solve_greedy, solve_greedy_urgent
-from src.algorithms.sa import solve_sa
-from src.algorithms.ga import solve_ga
-from src.algorithms.random_search import solve_random_search
+from src.utils.factories import build_problem
+from src.algorithms import SOLVERS
 from visualization.route_map import (
     plot_customer_distribution, plot_optimal_routes, plot_algorithm_comparison
 )
@@ -34,35 +25,6 @@ from visualization.comparison import (
 )
 from visualization.convergence import plot_convergence_curves
 from visualization.load_balance import plot_load_distribution
-
-
-ALGO_NAMES = {
-    'greedy': '贪心算法',
-    'greedy_urgent': '贪心(紧急优先)',
-    'sa': '模拟退火',
-    'ga': '遗传算法',
-    'random': '随机搜索',
-}
-
-
-def build_problem(customers_dict, num_drones):
-    from config import DRONE_CAPACITY, DRONE_SPEED, DRONE_MAX_RANGE
-
-    customers = [
-        Customer(
-            id=c['id'], x=c['x'], y=c['y'], demand=c['demand'],
-            customer_type=c['customer_type'],
-            time_window=(c['time_window_start'], c['time_window_end']),
-            service_time=c['service_time'],
-        )
-        for c in customers_dict
-    ]
-    drones = [
-        Drone(i, DRONE_CAPACITY, DRONE_SPEED, DRONE_MAX_RANGE)
-        for i in range(num_drones)
-    ]
-    dist_matrix = compute_distance_matrix(customers, DEPOT_COORDS)
-    return Problem(customers, drones, dist_matrix)
 
 
 def run_single(scenario_name='standard', algo_names=None, seed=SEED, verbose=True):
@@ -74,18 +36,10 @@ def run_single(scenario_name='standard', algo_names=None, seed=SEED, verbose=Tru
     customers_dict = generate_scenario(scenario_name, seed=seed)
     problem = build_problem(customers_dict, cfg['num_drones'])
 
-    solve_fns = {
-        'greedy': solve_greedy,
-        'greedy_urgent': solve_greedy_urgent,
-        'sa': solve_sa,
-        'ga': solve_ga,
-        'random': solve_random_search,
-    }
-
     results = {}
     for algo_name in algo_names:
         t0 = time.time()
-        routes, cost, history = solve_fns[algo_name](problem, seed=seed)
+        routes, cost, history = SOLVERS[algo_name](problem, seed=seed)
         elapsed = time.time() - t0
 
         eval_result = problem.evaluate_solution(routes)
@@ -162,7 +116,7 @@ def run_and_visualize(scenario_name='standard', algo_names=None, seed=SEED):
     all_results_for_scatter = {a: [r] for a, r in results.items()}
     plot_runtime_vs_cost(all_results_for_scatter, ALGO_NAMES)
 
-    print(f"\n全部图表已生成到 visualization/output/")
+    print(f"\n全部图表已生成到 outputs/")
 
     # 打印对比汇总表
     print(f"\n{'='*80}")

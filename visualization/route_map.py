@@ -7,8 +7,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch, Circle
-from datetime import datetime
+from matplotlib.patches import FancyArrowPatch
 
 from config import BG, PANEL, GRID, TEXT_PRI, TEXT_SEC, DEPOT_COL, PALETTE, DEPOT_COORDS
 

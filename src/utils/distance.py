@@ -6,14 +6,9 @@ import numpy as np
 from config import ROAD_FACTOR
 
 
-def euclidean_distance(p1, p2):
-    """两点欧氏距离"""
-    return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
-
-
 def road_distance(p1, p2):
     """实际道路距离 = 欧氏距离 × 曲折系数"""
-    return ROAD_FACTOR * euclidean_distance(p1, p2)
+    return ROAD_FACTOR * np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
 
 def compute_distance_matrix(customers, depot):
@@ -33,6 +28,3 @@ def compute_distance_matrix(customers, depot):
     return mat
 
 
-def compute_flight_time(dist_km, speed):
-    """飞行时间（小时）"""
-    return dist_km / speed

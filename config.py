@@ -75,6 +75,15 @@ GRID = "#21262d"
 TEXT_PRI = "#e6edf3"
 TEXT_SEC = "#8b949e"
 DEPOT_COL = "#ff6b6b"
+# ========== 算法名称映射 ==========
+ALGO_NAMES = {
+    'greedy': '贪心算法',
+    'greedy_urgent': '贪心(紧急优先)',
+    'sa': '模拟退火',
+    'ga': '遗传算法',
+    'random': '随机搜索',
+}
+
 PALETTE = [
     "#58a6ff", "#3fb950", "#f78166", "#d2a8ff", "#ffa657",
     "#79c0ff", "#56d364", "#ff7b72", "#bc8cff", "#ffb347",

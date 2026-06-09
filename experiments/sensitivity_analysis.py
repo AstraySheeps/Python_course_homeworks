@@ -14,29 +14,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import SCENARIOS, SEED
 from data.generate_data import generate_scenario
-from src.models.customer import Customer
-from src.models.drone import Drone
-from src.models.problem import Problem
-from src.utils.distance import compute_distance_matrix
-from src.algorithms.sa import solve_sa
-from src.algorithms.ga import solve_ga
+from src.utils.factories import build_problem
+from src.algorithms.sa import SimulatedAnnealing
+from src.algorithms.ga import GeneticAlgorithm
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), 'output')
-
-
-def build_problem(customers_dict, num_drones):
-    from config import DRONE_CAPACITY, DRONE_SPEED, DRONE_MAX_RANGE, DEPOT_COORDS
-    customers = [
-        Customer(id=c['id'], x=c['x'], y=c['y'], demand=c['demand'],
-                 customer_type=c['customer_type'],
-                 time_window=(c['time_window_start'], c['time_window_end']),
-                 service_time=c['service_time'])
-        for c in customers_dict
-    ]
-    drones = [Drone(i, DRONE_CAPACITY, DRONE_SPEED, DRONE_MAX_RANGE)
-              for i in range(num_drones)]
-    dist_matrix = compute_distance_matrix(customers, DEPOT_COORDS)
-    return Problem(customers, drones, dist_matrix)
 
 
 def analyze_sa_params(scenario_name='standard', n_runs=10):
@@ -56,8 +38,7 @@ def analyze_sa_params(scenario_name='standard', n_runs=10):
         costs = []
         for run in range(n_runs):
             config = {'alpha': alpha}
-            algo = __import__('src.algorithms.sa', fromlist=['SimulatedAnnealing'])
-            sa = algo.SimulatedAnnealing(problem, config=config)
+            sa = SimulatedAnnealing(problem, config=config)
             routes, cost, _ = sa.solve()
             costs.append(cost)
         results['alpha'][str(alpha)] = {
@@ -70,8 +51,7 @@ def analyze_sa_params(scenario_name='standard', n_runs=10):
         costs = []
         for run in range(n_runs):
             config = {'T0': T0}
-            algo = __import__('src.algorithms.sa', fromlist=['SimulatedAnnealing'])
-            sa = algo.SimulatedAnnealing(problem, config=config)
+            sa = SimulatedAnnealing(problem, config=config)
             routes, cost, _ = sa.solve()
             costs.append(cost)
         results['T0'][str(T0)] = {
@@ -99,8 +79,7 @@ def analyze_ga_params(scenario_name='standard', n_runs=10):
         costs = []
         for run in range(n_runs):
             config = {'pop_size': ps}
-            algo = __import__('src.algorithms.ga', fromlist=['GeneticAlgorithm'])
-            ga = algo.GeneticAlgorithm(problem, config=config)
+            ga = GeneticAlgorithm(problem, config=config)
             routes, cost, _ = ga.solve()
             costs.append(cost)
         results['pop_size'][str(ps)] = {
@@ -113,8 +92,7 @@ def analyze_ga_params(scenario_name='standard', n_runs=10):
         costs = []
         for run in range(n_runs):
             config = {'mut_prob': mp}
-            algo = __import__('src.algorithms.ga', fromlist=['GeneticAlgorithm'])
-            ga = algo.GeneticAlgorithm(problem, config=config)
+            ga = GeneticAlgorithm(problem, config=config)
             routes, cost, _ = ga.solve()
             costs.append(cost)
         results['mut_prob'][str(mp)] = {
@@ -127,8 +105,7 @@ def analyze_ga_params(scenario_name='standard', n_runs=10):
         costs = []
         for run in range(n_runs):
             config = {'cx_prob': cp}
-            algo = __import__('src.algorithms.ga', fromlist=['GeneticAlgorithm'])
-            ga = algo.GeneticAlgorithm(problem, config=config)
+            ga = GeneticAlgorithm(problem, config=config)
             routes, cost, _ = ga.solve()
             costs.append(cost)
         results['cx_prob'][str(cp)] = {
