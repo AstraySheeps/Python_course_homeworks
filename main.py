@@ -11,7 +11,9 @@
 """
 
 import argparse
+import os
 import time
+from datetime import datetime
 
 from config import SCENARIOS, SEED, NUM_INDEPENDENT_RUNS, DEPOT_COORDS, ALGO_NAMES
 from data.generate_data import generate_scenario
@@ -26,9 +28,104 @@ from visualization.comparison import (
 from visualization.convergence import plot_convergence_curves
 from visualization.load_balance import plot_load_distribution
 
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'outputs')
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def run_single(scenario_name='standard', algo_names=None, seed=SEED, verbose=True):
-    """单次运行所有算法"""
+
+def _build_run_report(problem, results, scenario_name, seed):
+    """构建单次运行的 Markdown 报告"""
+    cfg = SCENARIOS[scenario_name]
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    lines = []
+
+    lines.append(f"# 无人机配送路径规划 — 运行报告")
+    lines.append("")
+    lines.append(f"- **场景**: {scenario_name}（{cfg['num_customers']} 客户 / {cfg['num_drones']} 架无人机）")
+    lines.append(f"- **种子**: {seed}")
+    lines.append(f"- **生成时间**: {now}")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # 算法对比汇总表
+    lines.append("## 算法对比汇总")
+    lines.append("")
+    lines.append("| 算法 | 总成本(元) | 距离(km) | Makespan(min) | 延迟(h) | 超重(kg) | 超航程(km) | 基尼系数 | 耗时(s) | 可行 |")
+    lines.append("|------|-----------|----------|---------------|---------|----------|------------|----------|---------|------|")
+    algo_order = ['greedy', 'greedy_urgent', 'sa', 'ga', 'random']
+    for algo_name in algo_order:
+        if algo_name not in results:
+            continue
+        r = results[algo_name]
+        ok = '✅' if r['is_feasible'] else '❌'
+        lines.append(f"| {ALGO_NAMES.get(algo_name, algo_name)} "
+                     f"| {r['total_cost']:>10.2f} "
+                     f"| {r['total_distance']:>8.2f} "
+                     f"| {r['makespan']:>12.1f} "
+                     f"| {r['total_delay_time']:>8.4f} "
+                     f"| {r['total_overload']:>8.2f} "
+                     f"| {r['total_excess_range']:>10.2f} "
+                     f"| {r['load_gini']:>8.3f} "
+                     f"| {r['runtime']:>7.2f} "
+                     f"| {ok} |")
+    lines.append("")
+
+    # 成本分解
+    lines.append("## 成本分解（元）")
+    lines.append("")
+    lines.append("| 算法 | 飞行成本 | 运营成本 | 延迟罚金 | 超重罚金 | 超航程罚金 | 总成本 |")
+    lines.append("|------|----------|----------|----------|----------|------------|--------|")
+    for algo_name in algo_order:
+        if algo_name not in results:
+            continue
+        r = results[algo_name]
+        lines.append(f"| {ALGO_NAMES.get(algo_name, algo_name)} "
+                     f"| {r['flight_cost']:>8.2f} "
+                     f"| {r['operation_cost']:>8.2f} "
+                     f"| {r['delay_penalty']:>8.2f} "
+                     f"| {r['overload_penalty']:>8.2f} "
+                     f"| {r['excess_range_penalty']:>10.2f} "
+                     f"| {r['total_cost']:>8.2f} |")
+    lines.append("")
+
+    # 相对贪心基线的改进
+    baseline_cost = results.get('greedy', {}).get('total_cost', 0)
+    if baseline_cost > 0:
+        lines.append("## 相对贪心基线的改进")
+        lines.append("")
+        lines.append("| 算法 | 改进(元) | 改进(%) |")
+        lines.append("|------|---------|---------|")
+        for algo_name in ['greedy_urgent', 'sa', 'ga', 'random']:
+            if algo_name not in results:
+                continue
+            imp = baseline_cost - results[algo_name]['total_cost']
+            imp_pct = imp / baseline_cost * 100
+            arrow = '↓' if imp > 0 else '↑'
+            lines.append(f"| {ALGO_NAMES.get(algo_name, algo_name)} "
+                         f"| {arrow} {abs(imp):.2f} "
+                         f"| {arrow} {abs(imp_pct):.1f}% |")
+        lines.append("")
+
+    # 约束违反分析
+    lines.append("---")
+    lines.append("")
+    lines.append("## 约束违反分析")
+    lines.append("")
+    for algo_name in algo_order:
+        if algo_name not in results:
+            continue
+        md_text, _ = problem.violation_report_markdown(
+            results[algo_name]['routes'],
+            ALGO_NAMES.get(algo_name, algo_name)
+        )
+        lines.append(md_text)
+        lines.append("")
+
+    return '\n'.join(lines)
+
+
+def run_single(scenario_name='standard', algo_names=None, seed=SEED):
+    """单次运行所有算法，返回 problem 和 results（不打印到终端）"""
     if algo_names is None:
         algo_names = ['greedy', 'greedy_urgent', 'sa', 'ga', 'random']
 
@@ -48,23 +145,12 @@ def run_single(scenario_name='standard', algo_names=None, seed=SEED, verbose=Tru
         eval_result['runtime'] = elapsed
         results[algo_name] = eval_result
 
-        if verbose:
-            print(f"  {ALGO_NAMES[algo_name]:<16} "
-                  f"成本={eval_result['total_cost']:>10.2f}元  "
-                  f"距离={eval_result['total_distance']:>8.2f}km  "
-                  f"Makespan={eval_result['makespan']:>8.1f}min  "
-                  f"耗时={elapsed:>6.2f}s  "
-                  f"feasible={'Y' if eval_result['is_feasible'] else 'N'}")
-            problem.print_violation_report(routes, ALGO_NAMES.get(algo_name, algo_name))
-
     return problem, results
 
 
 def run_and_visualize(scenario_name='standard', algo_names=None, seed=SEED):
-    """运行算法并生成全部可视化"""
-    print(f"\n{'='*60}")
-    print(f"场景: {scenario_name}")
-    print(f"{'='*60}")
+    """运行算法，生成全部可视化图表和 Markdown 报告"""
+    print(f"运行中... 场景: {scenario_name}")
 
     problem, results = run_single(scenario_name, algo_names, seed)
 
@@ -74,35 +160,28 @@ def run_and_visualize(scenario_name='standard', algo_names=None, seed=SEED):
         routes_dict[algo_name] = r['routes']
 
     # 生成全部图表
-    print(f"\n生成可视化图表...")
+    print(f"  生成可视化图表...")
     plot_customer_distribution(problem.customers)
 
-    # 使用 GA 最优解画路线图
     if 'ga' in results:
         plot_optimal_routes(problem, results['ga']['routes'],
                             title='遗传算法最优配送路线')
 
-    # 算法路线对比
-    if len(routes_dict) >= 3:
-        # 取 greedy, sa, ga
-        compare_routes = {}
-        for k in ['greedy', 'sa', 'ga']:
-            if k in routes_dict:
-                compare_routes[k] = routes_dict[k]
-        if len(compare_routes) >= 2:
-            plot_algorithm_comparison(problem, compare_routes)
+    compare_routes = {}
+    for k in ['greedy', 'sa', 'ga']:
+        if k in routes_dict:
+            compare_routes[k] = routes_dict[k]
+    if len(compare_routes) >= 2:
+        plot_algorithm_comparison(problem, compare_routes)
 
-    # 负载分布
     if len(routes_dict) >= 2:
         plot_load_distribution(problem, routes_dict, ALGO_NAMES)
 
-    # 收敛曲线
     sa_history = results.get('sa', {}).get('history')
     ga_history = results.get('ga', {}).get('history')
     if sa_history or ga_history:
         plot_convergence_curves(sa_history=sa_history, ga_history=ga_history)
 
-    # 成本对比柱状图和散点图
     summary = {}
     for algo_name, r in results.items():
         summary[algo_name] = {
@@ -116,31 +195,17 @@ def run_and_visualize(scenario_name='standard', algo_names=None, seed=SEED):
     all_results_for_scatter = {a: [r] for a, r in results.items()}
     plot_runtime_vs_cost(all_results_for_scatter, ALGO_NAMES)
 
-    print(f"\n全部图表已生成到 outputs/")
+    # 生成 Markdown 报告
+    print(f"  生成文字报告...")
+    md_content = _build_run_report(problem, results, scenario_name, seed)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    report_path = os.path.join(OUTPUT_DIR, f'report_{scenario_name}_{timestamp}.md')
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(md_content)
 
-    # 打印对比汇总表
-    print(f"\n{'='*80}")
-    print("算法对比汇总")
-    print(f"{'='*80}")
-    header = f"{'算法':<16} {'总成本(元)':>12} {'距离(km)':>10} {'Makespan(min)':>14} {'延迟(h)':>10} {'可行':>6}"
-    print(header)
-    print("-" * 80)
-    for algo_name in ['greedy', 'greedy_urgent', 'sa', 'ga', 'random']:
-        if algo_name in results:
-            r = results[algo_name]
-            print(f"{ALGO_NAMES[algo_name]:<16} {r['total_cost']:>12.2f} "
-                  f"{r['total_distance']:>10.2f} {r['makespan']:>14.1f} "
-                  f"{r['total_delay_time']:>10.4f} "
-                  f"{'Y' if r['is_feasible'] else 'N':>6}")
-
-    baseline_cost = results.get('greedy', {}).get('total_cost', 0)
-    if baseline_cost > 0:
-        print("-" * 80)
-        for algo_name in ['greedy_urgent', 'sa', 'ga', 'random']:
-            if algo_name in results:
-                imp = baseline_cost - results[algo_name]['total_cost']
-                imp_pct = imp / baseline_cost * 100
-                print(f"{ALGO_NAMES[algo_name]} vs 贪心: {imp:+.2f}元 ({imp_pct:+.1f}%)")
+    print(f"  图表已保存到 outputs/")
+    print(f"  报告已保存到 {report_path}")
+    print(f"  Done.")
 
     return problem, results
 
@@ -158,6 +223,11 @@ def main():
 
     args = parser.parse_args()
 
+    if args.output_dir:
+        global OUTPUT_DIR
+        OUTPUT_DIR = args.output_dir
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     print("=" * 60)
     print("无人机集群配送路径规划")
     print("=" * 60)
@@ -165,7 +235,6 @@ def main():
           f"{SCENARIOS[args.scenario]['num_drones']}架无人机)")
     print(f"算法: {[ALGO_NAMES[a] for a in args.algo]}")
     print(f"种子: {args.seed}")
-    print("=" * 60)
 
     if args.runs > 1:
         # 批量实验模式
@@ -175,7 +244,9 @@ def main():
         # 单次运行 + 可视化
         run_and_visualize(args.scenario, args.algo, args.seed)
 
-    print("\n完成！")
+    print("=" * 60)
+    print("全部完成！报告和图表保存在 outputs/ 目录")
+    print("=" * 60)
 
 
 if __name__ == '__main__':

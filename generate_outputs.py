@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""一键生成全部标准输出图表（用于PPT和汇报）"""
+"""一键生成全部标准输出图表和 Markdown 报告（用于PPT和汇报）"""
 import matplotlib
 matplotlib.use('Agg')
+import os
 import time
+from datetime import datetime
 
 from config import SCENARIOS, SEED, ALGO_NAMES
 from data.generate_data import generate_scenario
@@ -19,12 +21,79 @@ from visualization.convergence import plot_convergence_curves
 from visualization.load_balance import plot_load_distribution
 
 ALGO_ORDER = ['greedy', 'greedy_urgent', 'sa', 'ga', 'random']
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'outputs')
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+
+def _build_output_report(problem, results, scenario_name):
+    """构建 Markdown 报告"""
+    cfg = SCENARIOS[scenario_name]
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    lines = []
+
+    lines.append(f"# 标准输出报告（PPT用）")
+    lines.append("")
+    lines.append(f"- **场景**: {scenario_name}（{cfg['num_customers']} 客户 / {cfg['num_drones']} 架无人机）")
+    lines.append(f"- **种子**: {SEED}")
+    lines.append(f"- **生成时间**: {now}")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    lines.append("## 算法对比汇总")
+    lines.append("")
+    lines.append("| 算法 | 总成本(元) | 距离(km) | Makespan(min) | 延迟(h) | 基尼系数 | 可行 |")
+    lines.append("|------|-----------|----------|---------------|---------|----------|------|")
+    for a in ALGO_ORDER:
+        if a not in results:
+            continue
+        r = results[a]
+        ok = '✅' if r['is_feasible'] else '❌'
+        lines.append(f"| {ALGO_NAMES[a]} "
+                     f"| {r['total_cost']:.2f} "
+                     f"| {r['total_distance']:.2f} "
+                     f"| {r['makespan']:.1f} "
+                     f"| {r['total_delay_time']:.4f} "
+                     f"| {r['load_gini']:.3f} "
+                     f"| {ok} |")
+    lines.append("")
+
+    # 相对贪心基线的改进
+    baseline = results['greedy']['total_cost']
+    if baseline > 0:
+        lines.append("## 相对贪心基线的改进")
+        lines.append("")
+        lines.append("| 算法 | 改进(元) | 改进(%) |")
+        lines.append("|------|---------|---------|")
+        for a in ['greedy_urgent', 'sa', 'ga', 'random']:
+            if a not in results:
+                continue
+            imp = baseline - results[a]['total_cost']
+            imp_pct = imp / baseline * 100
+            arrow = '↓' if imp > 0 else '↑'
+            lines.append(f"| {ALGO_NAMES[a]} | {arrow} {abs(imp):.2f} | {arrow} {abs(imp_pct):.1f}% |")
+        lines.append("")
+
+    # 约束违反分析
+    lines.append("---")
+    lines.append("")
+    lines.append("## 约束违反分析")
+    lines.append("")
+    for a in ALGO_ORDER:
+        if a not in results:
+            continue
+        md_text, _ = problem.violation_report_markdown(
+            results[a]['routes'], ALGO_NAMES.get(a, a)
+        )
+        lines.append(md_text)
+        lines.append("")
+
+    return '\n'.join(lines)
 
 
 def run_scenario(scenario_name):
-    print(f"\n{'='*70}")
-    print(f"Scenario: {scenario_name}")
-    print(f"{'='*70}")
+    """运行场景，生成全部图表和 Markdown 报告"""
+    print(f"运行中... 场景: {scenario_name}")
 
     cfg = SCENARIOS[scenario_name]
     customers_dict = generate_scenario(scenario_name, seed=SEED)
@@ -40,28 +109,19 @@ def run_scenario(scenario_name):
         eval_result['history'] = history
         eval_result['runtime'] = elapsed
         results[algo_name] = eval_result
-        ok_str = 'Y' if eval_result['is_feasible'] else 'N'
-        print(f"  {ALGO_NAMES[algo_name]:<18} cost={cost:>10.2f}  dist={eval_result['total_distance']:>8.2f}km  "
-              f"ms={eval_result['makespan']:>8.1f}min  t={elapsed:>6.2f}s  ok={ok_str}")
-        problem.print_violation_report(routes, ALGO_NAMES.get(algo_name, algo_name))
 
-    # ---- 图表生成 ----
-    print(f"\n  Generating charts...")
-
-    # Fig1: Customer distribution
+    # 图表生成
+    print(f"  生成可视化图表...")
     plot_customer_distribution(problem.customers, save_to_file=True)
 
-    # Fig2: Optimal route (GA)
     if 'ga' in results:
         plot_optimal_routes(problem, results['ga']['routes'],
                             title='Genetic Algorithm - Optimal Delivery Routes',
                             save_to_file=True)
 
-    # Fig3: Algorithm route comparison
     compare = {k: results[k]['routes'] for k in ['greedy', 'sa', 'ga'] if k in results}
     plot_algorithm_comparison(problem, compare, save_to_file=True)
 
-    # Fig4: Cost bar chart
     summary = {}
     for a, r in results.items():
         summary[a] = {
@@ -71,42 +131,30 @@ def run_scenario(scenario_name):
         }
     plot_cost_comparison(summary, ALGO_NAMES, save_to_file=True)
 
-    # Fig5: Convergence curves
     sa_h = results.get('sa', {}).get('history')
     ga_h = results.get('ga', {}).get('history')
     plot_convergence_curves(sa_history=sa_h, ga_history=ga_h, save_to_file=True)
 
-    # Fig6: Multi-metric comparison
     plot_multi_metric_comparison(summary, ALGO_NAMES, save_to_file=True)
 
-    # Fig7: Runtime vs cost
     all_res = {a: [r] for a, r in results.items()}
     plot_runtime_vs_cost(all_res, ALGO_NAMES, save_to_file=True)
 
-    # Fig8: Load distribution
     routes_dict = {k: r['routes'] for k, r in results.items()}
     plot_load_distribution(problem, routes_dict, ALGO_NAMES, save_to_file=True)
 
-    # ---- Summary table ----
-    print(f"\n  {'Algorithm':<18} {'Cost(yuan)':>12} {'Dist(km)':>10} {'Makespan(min)':>14} {'Delay(h)':>10} {'Gini':>8} {'Feasible':>8}")
-    print(f"  {'-'*80}")
-    for a in ALGO_ORDER:
-        if a in results:
-            r = results[a]
-            ok = 'Y' if r['is_feasible'] else 'N'
-            print(f"  {ALGO_NAMES[a]:<18} {r['total_cost']:>12.2f} {r['total_distance']:>10.2f} "
-                  f"{r['makespan']:>14.1f} {r['total_delay_time']:>10.4f} {r['load_gini']:>8.3f} {ok:>8}")
+    # 生成 Markdown 报告
+    print(f"  生成文字报告...")
+    md_content = _build_output_report(problem, results, scenario_name)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    report_path = os.path.join(OUTPUT_DIR, f'report_output_{scenario_name}_{timestamp}.md')
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(md_content)
 
-    baseline = results['greedy']['total_cost']
-    print(f"  {'-'*80}")
-    for a in ['greedy_urgent', 'sa', 'ga', 'random']:
-        if a in results:
-            imp = baseline - results[a]['total_cost']
-            imp_pct = imp / baseline * 100
-            arrow = 'v' if imp > 0 else '^'
-            print(f"  {ALGO_NAMES[a]} vs Greedy: {arrow} {abs(imp):.2f} yuan ({abs(imp_pct):.1f}% {'better' if imp > 0 else 'worse'})")
+    print(f"  图表已保存到 outputs/")
+    print(f"  报告: {report_path}")
+    print(f"  Done.")
 
-    print(f"\n  Charts saved to outputs/")
     return problem, results
 
 
@@ -114,12 +162,12 @@ if __name__ == '__main__':
     # Standard scenario for PPT
     problem, results = run_scenario('standard')
 
-    # Also generate small scenario data
-    print(f"\n\nGenerating small/large scenario data...")
+    # Also generate small/large scenario data
+    print(f"\n生成 small/large 场景数据...")
     generate_scenario('small', seed=SEED)
     generate_scenario('large', seed=SEED)
 
-    print(f"\n{'='*70}")
-    print(f"All done! 8 charts in outputs/")
-    print(f"Data CSV in data/output/")
-    print(f"{'='*70}")
+    print(f"\n{'='*60}")
+    print(f"全部完成！8张图表 + 报告 保存在 outputs/")
+    print(f"数据 CSV 在 data/output/")
+    print(f"{'='*60}")

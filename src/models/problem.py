@@ -297,51 +297,58 @@ class Problem:
 
         return report
 
-    def print_violation_report(self, routes, algo_name=''):
-        """打印格式化的约束违反分析报告"""
+    def violation_report_markdown(self, routes, algo_name=''):
+        """生成约束违反分析的 Markdown 文本"""
         report = self.get_violation_report(routes)
         s = report['summary']
+        lines = []
 
-        print(f"\n  {'-'*50}")
-        print(f"  [约束违反分析]{f' - {algo_name}' if algo_name else ''}")
-        print(f"  {'-'*50}")
+        lines.append(f"### 约束违反分析{f' — {algo_name}' if algo_name else ''}")
+        lines.append("")
 
         # 硬约束
         if s['hard_constraint_satisfied']:
-            print(f"  硬约束: PASS (载重<={DRONE_CAPACITY}kg, 航程<={DRONE_MAX_RANGE}km)")
+            lines.append(f"- **硬约束**: ✅ PASS（载重≤{DRONE_CAPACITY}kg, 航程≤{DRONE_MAX_RANGE}km）")
         else:
-            print(f"  硬约束: FAIL ({s['hard_violation_count']} 项违反)")
+            lines.append(f"- **硬约束**: ❌ FAIL（{s['hard_violation_count']} 项违反）")
             if s['capacity_violations'] > 0:
                 for v in report['hard_violations']['capacity']:
                     drone_idx, load, cap, excess = v
-                    print(f"     - 无人机#{drone_idx} 超载: {load:.1f}/{cap:.0f}kg (+{excess:.1f}kg)")
+                    lines.append(f"  - 无人机#{drone_idx} 超载: {load:.1f}/{cap:.0f}kg（+{excess:.1f}kg）")
             if s['range_violations'] > 0:
                 for v in report['hard_violations']['range']:
                     drone_idx, dist, max_r, excess = v
-                    print(f"     - 无人机#{drone_idx} 超航程: {dist:.1f}/{max_r:.0f}km (+{excess:.1f}km)")
+                    lines.append(f"  - 无人机#{drone_idx} 超航程: {dist:.1f}/{max_r:.0f}km（+{excess:.1f}km）")
             if report['hard_violations']['visit_once']:
-                print(f"     - 存在客户被重复访问")
+                lines.append(f"  - 存在客户被重复访问")
             if report['hard_violations']['depot_depart_return']:
-                print(f"     - 无人机#{report['hard_violations']['depot_depart_return']} 未出发")
+                lines.append(f"  - 无人机#{report['hard_violations']['depot_depart_return']} 未出发")
 
         # 软约束
-        print(f"  软约束(时间窗):")
+        lines.append("")
+        lines.append("- **软约束（时间窗）**:")
         if s['soft_violation_count'] == 0:
-            print(f"     延迟: 0 个客户 - 全部按时送达")
+            lines.append("  - 延迟: 0 个客户，全部按时送达 ✅")
         else:
-            print(f"     延迟客户: {s['delay_customer_count']}/{self.n} ({s['delayed_customer_pct']:.1f}%)")
-            print(f"     总延迟: {s['total_delay_min']:.1f} min | 平均: {s['total_delay_min']/max(s['delay_customer_count'],1):.1f} min/客户 | 最大: {s['max_delay_min']:.1f} min")
+            lines.append(f"  - 延迟客户: {s['delay_customer_count']}/{self.n}（{s['delayed_customer_pct']:.1f}%）")
+            lines.append(f"  - 总延迟: {s['total_delay_min']:.1f} min | 平均: {s['total_delay_min']/max(s['delay_customer_count'],1):.1f} min/客户 | 最大: {s['max_delay_min']:.1f} min")
             sorted_delays = sorted(report['soft_violations']['delay'], key=lambda x: -x[3])[:3]
             for d in sorted_delays:
                 cid, arrival, due, delay_min = d
                 ctype = self.customers[cid].customer_type
-                print(f"     - 客户#{cid}({ctype}): 到达{arrival:.2f}h > 截止{due:.2f}h, 延迟{delay_min:.0f}min")
+                lines.append(f"    - 客户#{cid}（{ctype}）: 到达 {arrival:.2f}h > 截止 {due:.2f}h，延迟 {delay_min:.0f}min")
         if s['wait_customer_count'] > 0:
-            print(f"     提前到达: {s['wait_customer_count']} 个客户, 总等待 {s['total_wait_min']:.1f} min")
+            lines.append(f"  - 提前到达: {s['wait_customer_count']} 个客户，总等待 {s['total_wait_min']:.1f} min")
         else:
-            print(f"     提前到达: 0 个客户")
+            lines.append("  - 提前到达: 0 个客户")
 
-        print(f"  {'-'*50}")
+        lines.append("")
+        return '\n'.join(lines), report
+
+    def print_violation_report(self, routes, algo_name=''):
+        """打印格式化的约束违反分析报告（终端输出，保留兼容）"""
+        md_text, report = self.violation_report_markdown(routes, algo_name)
+        print(md_text)
         return report
 
     # ==================== 辅助方法 ====================
