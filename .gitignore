@@ -24,6 +24,5 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets*.toml
 
-# Output images (generated)
-outputs/*.png
+# Output images — 保留，需要上传到 GitHub 供 PPT/报告引用
 visualization/output/*.png
