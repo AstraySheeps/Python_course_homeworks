@@ -38,8 +38,10 @@ def summary_table(results_by_algo):
     Returns:
         dict 含各算法、各指标 statistics
     """
-    metrics = ['total_cost', 'total_distance', 'makespan',
-               'total_delay_time', 'load_gini', 'is_feasible']
+    metrics = ['total_cost', 'flight_cost', 'operation_cost',
+               'delay_penalty', 'total_distance', 'total_flight_time',
+               'total_delay_time', 'makespan', 'load_gini',
+               'num_active_drones', 'runtime', 'is_feasible']
     summary = {}
     for algo, results in results_by_algo.items():
         algo_summary = {}

@@ -175,7 +175,7 @@
 - **左半部分**: 插入 **`fig5_convergence.png`**（SA收敛轨迹 + GA进化曲线）
   - SA：成本随迭代快速下降，自适应冷却加速收敛
   - GA：最优适应度 100代后平稳，平均适应度波动反映种群多样性
-- **右半部分**: 插入 **`fig6_multi_metric.png`**（多指标分组柱状图：成本/距离/Makespan）
+- **右半部分**: 插入 **`fig6_multi_metric.png`**（多指标分组柱状图：成本/距离/Makespan/运行时间）
 - **备注**: 25秒。收敛图证明算法确实在"学习"而非盲目搜索
 
 ---
@@ -232,7 +232,7 @@
 | fig3 | `fig3_algo_comparison.png` | 第10页 | 三种算法路线并排对比 |
 | fig4 | `fig4_cost_comparison.png` | 第11页 | 成本对比柱状图+误差棒 |
 | fig5 | `fig5_convergence.png` | 第12页 | SA+GA 收敛曲线 |
-| fig6 | `fig6_multi_metric.png` | 第12页 | 多指标分组柱状图 |
+| fig6 | `fig6_multi_metric.png` | 第12页 | 多指标分组柱状图（成本/距离/Makespan/运行时间） |
 | fig7 | `fig7_runtime_vs_cost.png` | 第13页 | 运行时间 vs 成本散点图 |
 | fig8 | `fig8_load_distribution.png` | 第13页 | 各无人机负载分布 |
 

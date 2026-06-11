@@ -65,9 +65,11 @@ def plot_multi_metric_comparison(summary_dict, algo_labels,
         ('total_cost', '总成本(元)'),
         ('total_distance', '总距离(km)'),
         ('makespan', 'Makespan(min)'),
+        ('runtime', '运行时间(s)'),
     ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5.5), facecolor=BG)
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10), facecolor=BG)
+    axes = axes.flatten()
     algo_keys = list(summary_dict.keys())
     colors = [PALETTE[i % len(PALETTE)] for i in range(len(algo_keys))]
     names = [algo_labels.get(k, k) for k in algo_keys]

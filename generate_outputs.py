@@ -128,6 +128,7 @@ def run_scenario(scenario_name):
             'total_cost': {'mean': r['total_cost'], 'std': 0},
             'total_distance': {'mean': r['total_distance'], 'std': 0},
             'makespan': {'mean': r['makespan'], 'std': 0},
+            'runtime': {'mean': r['runtime'], 'std': 0},
         }
     plot_cost_comparison(summary, ALGO_NAMES, save_to_file=True)
 
